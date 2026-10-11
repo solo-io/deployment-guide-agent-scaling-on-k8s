@@ -3,8 +3,12 @@
 # atenet-egress, which injects the consumer key; without this policy any pod in the cluster could
 # call the enterprise gateway directly with a stolen or guessed key.
 #
-# Allowed: pods labelled app=atenet-egress in namespace ate-system, to the proxy's listener ports.
-# The proxy's other ports (admin, metrics) are not allowed from any pod.
+# Allowed, to the proxy's listener ports only (its admin and metrics ports are not allowed from any
+# pod):
+#   - pods labelled app=atenet-egress in namespace ate-system: every call an actor makes;
+#   - the kagent controller in namespace kagent: it discovers a RemoteMCPServer's tools by calling
+#     the server's URL itself, so an MCP server behind this gateway reports DiscoveryFailed
+#     without this rule (check 10). The controller presents the consumer key from the Secret.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -23,6 +27,19 @@ spec:
           podSelector:
             matchLabels:
               app: atenet-egress
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kagent
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+              app.kubernetes.io/name: kagent-enterprise
       ports:
         - protocol: TCP
           port: 80
