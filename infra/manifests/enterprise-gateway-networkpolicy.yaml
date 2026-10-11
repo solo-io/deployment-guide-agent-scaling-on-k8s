@@ -1,0 +1,30 @@
+# Only Substrate's egress gateway may reach the Solo Enterprise for agentgateway proxy that agent
+# model traffic is routed through (check 6b). Every model call from an actor already passes
+# atenet-egress, which injects the consumer key; without this policy any pod in the cluster could
+# call the enterprise gateway directly with a stolen or guessed key.
+#
+# Allowed: pods labelled app=atenet-egress in namespace ate-system, to the proxy's listener ports.
+# The proxy's other ports (admin, metrics) are not allowed from any pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentgateway-proxy-from-substrate-egress
+  namespace: agentgateway-system
+spec:
+  podSelector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: agentgateway-proxy
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ate-system
+          podSelector:
+            matchLabels:
+              app: atenet-egress
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443

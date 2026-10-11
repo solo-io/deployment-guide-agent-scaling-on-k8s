@@ -1,0 +1,154 @@
+{
+  "realm": "kagent",
+  "enabled": true,
+  "sslRequired": "none",
+  "groups": [
+    {
+      "name": "admins"
+    },
+    {
+      "name": "writers"
+    },
+    {
+      "name": "readers"
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "kagent-backend",
+      "name": "kagent controller (confidential)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${KAGENT_OIDC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:14000/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:14000"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:14000/"
+      },
+      "protocolMappers": [
+        {
+          "name": "Groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "Groups"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "kagent-ui",
+      "name": "kagent UI (public, PKCE)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:14000/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:14000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:14000/"
+      },
+      "protocolMappers": [
+        {
+          "name": "Groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "Groups"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@example.com",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "User",
+      "enabled": true,
+      "groups": [
+        "/admins"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KAGENT_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "writer",
+      "email": "writer@example.com",
+      "emailVerified": true,
+      "firstName": "Writer",
+      "lastName": "User",
+      "enabled": true,
+      "groups": [
+        "/writers"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KAGENT_WRITER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "reader",
+      "email": "reader@example.com",
+      "emailVerified": true,
+      "firstName": "Reader",
+      "lastName": "User",
+      "enabled": true,
+      "groups": [
+        "/readers"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KAGENT_READER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "norole",
+      "email": "norole@example.com",
+      "emailVerified": true,
+      "firstName": "No",
+      "lastName": "Role",
+      "enabled": true,
+      "groups": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KAGENT_NOROLE_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
