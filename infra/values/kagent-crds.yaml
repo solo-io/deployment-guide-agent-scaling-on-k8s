@@ -1,0 +1,4 @@
+# kagent-enterprise-crds 1.0.0-alpha8. substrate.enabled brings the substrate-crds subchart
+# (WorkerPool, ActorTemplate, SandboxConfig, ...), which the Substrate release needs first.
+substrate:
+  enabled: true

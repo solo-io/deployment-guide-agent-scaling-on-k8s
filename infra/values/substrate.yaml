@@ -1,0 +1,11 @@
+# substrate-enterprise 0.4.0-alpha1-066b803, release `substrate` in `ate-system`.
+# The license Secret is created before install from an environment variable, so no key is here.
+global:
+  licensing:
+    createSecret: false
+    secretName: enterprise-agentgateway-license
+usePodCertificateAPI: true
+credentialProvider:
+  namespacePolicies:
+    - atespace: kagent
+      allowedNamespaces: [kagent]
