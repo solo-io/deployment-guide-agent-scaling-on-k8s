@@ -186,7 +186,7 @@ declare one agent, and prove its first answer went through the gateway.
 conversations each run in their own sandbox, and whose every model call is authenticated and
 recorded by one gateway.
 
-**Verified on:** kind cluster `agents` (kind 0.32.0, `kindest/node:v1.35.0`), created fresh for this run beside another cluster on the same Docker host, 2026-10-11 21:56 UTC. Every `run` block in this section was executed verbatim, in document order, in one bash session, with the credentials applied after the environment block. kagent-enterprise 1.0.0-alpha8, substrate-enterprise 0.4.0-alpha1-066b803, kubectl-ate v0.4.0-alpha1, Solo Enterprise for agentgateway v2026.7.1, Gateway API v1.6.1.
+**Verified on:** kind cluster `agents` (kind 0.32.0, `kindest/node:v1.35.0`), created fresh beside another cluster on the same Docker host, 2026-10-11 21:56 UTC, then deleted and rebuilt from this document with `auto-build/run.sh` at 22:16 UTC. Every `run` block in this section was executed verbatim, in document order, in one bash session, with the credentials applied after the environment block. kagent-enterprise 1.0.0-alpha8, substrate-enterprise 0.4.0-alpha1-066b803, kubectl-ate v0.4.0-alpha1, Solo Enterprise for agentgateway v2026.7.1, Gateway API v1.6.1.
 
 ### Step 1: Create the cluster
 
@@ -801,7 +801,8 @@ policy:
 
 ```bash run id=step-7-fence-check
 kubectl run fence-check -n default --rm -i --restart=Never --image=busybox:1.36 --quiet -- \
-  sh -c 'wget -T 8 -O /dev/null http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages 2>&1 | tail -1'
+  sh -c 'wget -T 8 -O /dev/null http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages 2>&1 | tail -1' \
+  < /dev/null
 ```
 
 **Verified on 2026-10-11:**
@@ -809,6 +810,9 @@ kubectl run fence-check -n default --rm -i --restart=Never --image=busybox:1.36 
 ```text
 wget: download timed out
 ```
+
+`< /dev/null` keeps `kubectl run -i` from reading your terminal: without it, anything pasted after
+this block is fed to the pod instead of your shell, and silently never runs.
 
 `download timed out` is the policy dropping the connection. `401 Unauthorized` would mean the pod
 reached the gateway and only the key check stopped it.
@@ -828,8 +832,17 @@ gateway to replace the `x-api-key` header with the real value on the way to the 
 `baseUrl`.
 
 ```bash run id=secret-kagent-gateway-consumer-key
+: "${AGENT_CONSUMER_KEY:?is empty: Step 6 exported it in another shell. Read it back first (below).}"
 printf '%s' "$AGENT_CONSUMER_KEY" | kubectl create secret generic kagent-gateway-consumer-key \
   -n kagent --from-file=api-key=/dev/stdin
+```
+
+> [!WARNING]
+> **An empty consumer key fails nothing until the first turn.** `AGENT_CONSUMER_KEY` exists only in the shell that ran Step 6. In a new shell it is empty, and without the guard above an empty Secret is created without complaint, the agent still goes `Ready`, and the first turn fails with `503 Service Unavailable credential provider returned an unusable secret`. If the guard stops you, read the key back from the gateway's Secret and run the block again:
+
+```bash run id=step-8-read-back-consumer-key when=manual
+export AGENT_CONSUMER_KEY=$(kubectl get secret llm-virtual-keys -n agentgateway-system \
+  -o jsonpath='{.data.team-agents}' | base64 --decode | jq -r .key)
 ```
 
 ```bash run id=agent-assistant
@@ -942,11 +955,12 @@ kagent_send() {
   curl -sS --max-time 300 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/$1" \
     -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' \
     -d "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"$(openssl rand -hex 8)\",${ctx}\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"$2\"}]}}}" \
-    | jq -r '.result.task | "\(.status.state)\t\(.contextId)\t\(.artifacts[-1].parts[0].text // "")"'
+    | jq -r '.result.task | "\(.status.state)\t\(.contextId)\t\(.artifacts[-1].parts[0].text // .status.message.parts[0].text // "")"'
 }
 ```
 
-`--max-time 300` because a turn includes a model call. A dead port-forward otherwise leaves `curl`
+It prints the reply, or for a failed turn the error the agent got, so a failure is never a blank
+line. `--max-time 300` because a turn includes a model call. A dead port-forward otherwise leaves `curl`
 waiting rather than failing.
 
 Send the first message:
