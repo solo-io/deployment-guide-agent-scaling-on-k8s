@@ -29,7 +29,7 @@
         "http://localhost:14000"
       ],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:14000/"
+        "post.logout.redirect.uris": "http://localhost:14000"
       },
       "protocolMappers": [
         {
@@ -61,7 +61,7 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:14000/"
+        "post.logout.redirect.uris": "http://localhost:14000"
       },
       "protocolMappers": [
         {

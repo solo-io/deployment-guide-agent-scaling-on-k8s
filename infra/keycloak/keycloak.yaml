@@ -8,9 +8,9 @@
 #
 # KC_HOSTNAME is what Keycloak writes into every token's iss claim, and the kagent controller
 # validates iss against enterprise.oidc.issuer. The browser and the controller must use the same
-# URL: keycloak.localtest.me resolves to 127.0.0.1 on the workstation (a port-forward on 18080) and,
-# through infra/keycloak/coredns-localtest.sh, to this Service inside the cluster, which therefore
-# listens on 18080 too.
+# URL: browsers resolve keycloak.localhost to 127.0.0.1 themselves (a port-forward on 18080) and,
+# through infra/keycloak/coredns-localhost.sh, it resolves to this Service inside the cluster, which
+# therefore listens on 18080 too.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -45,7 +45,7 @@ spec:
             - name: KC_HOSTNAME_STRICT
               value: "false"
             - name: KC_HOSTNAME
-              value: "http://keycloak.localtest.me:18080"
+              value: "http://keycloak.localhost:18080"
           ports:
             - name: http
               containerPort: 8080

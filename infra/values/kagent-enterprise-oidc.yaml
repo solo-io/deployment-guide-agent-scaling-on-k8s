@@ -7,8 +7,8 @@
 enterprise:
   oidc:
     # Must equal the iss claim Keycloak writes (its KC_HOSTNAME), byte for byte, and be reachable
-    # from both the browser and the controller (see infra/keycloak/coredns-localtest.sh).
-    issuer: http://keycloak.localtest.me:18080/realms/kagent
+    # from both the browser and the controller (see infra/keycloak/coredns-localhost.sh).
+    issuer: http://keycloak.localhost:18080/realms/kagent
     clientId: kagent-backend
     secretRef: kagent-enterprise-oidc-secret
     secretKey: clientSecret
