@@ -100,6 +100,11 @@ export KIND_NODE_IMAGE=kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f578
 # Substrate refuses an image that is not pinned: a changed image invalidates snapshots.
 export WORKER_IMAGE=us-docker.pkg.dev/solo-public/substrate-enterprise/ateom-gvisor:v0.4.0-alpha1-066b803
 export RUNTIME_IMAGE=ghcr.io/kagent-dev/kagent/golang-adk@sha256:26ae5c772d4a59b24ecb3619c3499e106e3b28abbc239de25b4ff8d746f97e69
+# The Claude Code runtime, used in Step 15. Same kagent release as RUNTIME_IMAGE.
+export CLAUDE_HARNESS_IMAGE=ghcr.io/kagent-dev/kagent/claude-harness@sha256:e72d66d9f3b6eafbc59d18cef150fb5d31cb89ead83999a33c06264c21e86d4c
+
+# The S3 client Step 13 uses to read the snapshot store.
+export AWS_CLI_IMAGE=amazon/aws-cli:2.17.0@sha256:643507c10ada7964ca6157b3d799f030b90577643da9955d319a77399ed80d73
 
 # Licenses. Contact your Solo account team if you do not have them.
 export KAGENT_LICENSE_KEY='<your-kagent-enterprise-license-key>'
@@ -1031,3 +1036,431 @@ token counts are the gateway's own, which is what budgets and attribution in Iso
 own sandbox and stop costing memory when a turn ends, and a gateway that every model call passes
 through and nothing else in the cluster can reach. What you do not have yet is anything protecting
 the UI and API, or the snapshot store, from the rest of the cluster. Isolate closes both.
+
+## OPERATE
+
+Up and Running proved one turn works. This section follows a conversation through its whole life,
+so that when something misbehaves you know which part to look at.
+
+**What you are going to do:** see what kagent created in Substrate for the agent, follow one
+conversation through two turns and a suspension, inspect and act on its actor directly, find where
+its context is stored, delete it and check what is left, and run the same agent on a second
+runtime.
+
+**What you will have that you did not have before:** a working model of the agent lifecycle on this
+platform, and the commands to see each stage of it on your own cluster.
+
+**Verified on:** kind cluster `agents`, continuing from Up and Running, 2026-10-11 22:53 UTC. Every `run` block in this section was executed verbatim, in document order, with `auto-build/run.sh --from step-10-template`, on the same versions as Up and Running.
+
+### Step 10: How an agent becomes actors
+
+Applying the `Agent` in Step 8 did not start a pod. kagent asked Substrate for an **actor template**:
+the image, the sandbox class and the egress policy every conversation with this agent will get.
+Substrate started one actor from it, let it initialize, and saved its memory as a **golden
+snapshot**. That snapshot is what `Ready` meant.
+
+```bash run id=step-10-template
+kubectl-ate get actor-template -a kagent
+kubectl-ate get tags -a ate-golden
+```
+
+**Verified on 2026-10-11:**
+
+```text
+ATESPACE   NAME                     SANDBOX CLASS          GOLDEN TAG                             ERROR   AGE
+kagent     assistant-90a6c0400503   SANDBOX_CLASS_GVISOR   eaa9d93f-2679-42ea-b999-fd7c462d329f           19m
+ATESPACE     NAME                                   SCOPE                 STATE   SNAPSHOT                                                                                   CONTENT SCOPE                 AGE
+ate-golden   eaa9d93f-2679-42ea-b999-fd7c462d329f   TAG_SCOPE_PUBLISHED   Ready   gs://ate-snapshots/kagent/atespaces/ate-golden/tags/5fd81a10-392e-440c-874c-7771c589ac3e   SNAPSHOT_CONTENT_SCOPE_FULL   18m
+```
+
+The template's `GOLDEN TAG` is the tag in the `ate-golden` atespace, and the tag's snapshot is a
+full memory image in the snapshot store. Every agent you declare gets one of each.
+
+Then each conversation becomes its own **actor**, named `session-<conversation id>`, in the `kagent`
+atespace:
+
+```bash run id=step-10-actors
+kubectl-ate get actors -a kagent
+kubectl-ate get workers
+```
+
+**Verified on 2026-10-11:**
+
+```text
+ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
+kagent     session-01a12d1b-e08c-7aba-95f4-c8c1d10c3288   kagent/assistant-90a6c0400503   ACTOR_STATE_SUSPENDED   <none>                    9         17m
+NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                     AGE
+ae172888-828a-4ac2-8ef2-413c2aa7edfb   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-ff8dfbd47-7gsk8   21m
+7212ab89-0a3c-4293-8024-2d17dfcd05af   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-ff8dfbd47-spzlw   21m
+```
+
+Step 9's conversation is `SUSPENDED`, with no worker pod and no IP. It holds nothing on a worker
+until its next message. The workers report the actors placed on them right now, which is none.
+
+There is no long-lived actor per agent. Ten conversations with one agent are ten actors, each
+restored from the same golden snapshot, which is why Scale counts conversations rather than agents.
+
+### Step 11: Follow one conversation
+
+Two helpers. `actor_events` reads atelet's log, where Substrate records every restore and
+checkpoint with its timing. `wait_suspended` polls the actor until it is suspended:
+
+```bash run id=step-11-helpers
+# actor_events <conversation id>: restores and checkpoints for that conversation's actor.
+actor_events() {
+  kubectl logs -n ate-system daemonset/atelet --since=30m \
+    | jq -r --arg a "session-$1" 'select(."ate.actor.name" == $a and (.msg | test("timing breakdown")))
+        | [.time[11:23], .msg, ."ate.snapshot.kind" + "/" + ."ate.snapshot.scope",
+           (((."ate.actor.restore.duration.total" // ."ate.actor.checkpoint.duration.total") * 1000 | floor | tostring) + " ms")]
+        | @tsv'
+}
+
+# wait_suspended <conversation id>: block until the actor is suspended, at most 60s.
+wait_suspended() {
+  local waited=0 state
+  while [ "$waited" -lt 60 ]; do
+    state=$(kubectl-ate get actor "session-$1" -a kagent -o json | jq -r .status.state)
+    [ "$state" = ACTOR_STATE_SUSPENDED ] && { echo "suspended (polled ${waited}s after the reply)"; return 0; }
+    sleep 1; waited=$((waited + 1))
+  done
+  echo "still ${state} after 60s" >&2; return 1
+}
+```
+
+`daemonset/atelet` reads one atelet pod. On a single-node cluster that is the only one; on more
+nodes, read the pod on the node the actor ran on.
+
+Send the first turn of a new conversation, then watch its actor:
+
+```bash run id=step-11-turn-1
+TURN=$(kagent_send assistant "My project is called Larkspur. Reply with OK.")
+echo "$TURN"
+export CONV=$(echo "$TURN" | cut -f2)
+wait_suspended "$CONV"
+kubectl-ate get actor "session-${CONV}" -a kagent
+```
+
+**Verified on 2026-10-11:**
+
+```text
+TASK_STATE_COMPLETED	01a12d2c-06eb-7d28-9295-4e7724b09ba3	OK.
+suspended (polled 1s after the reply)
+ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
+kagent     session-01a12d2c-06eb-7d28-9295-4e7724b09ba3   kagent/assistant-90a6c0400503   ACTOR_STATE_SUSPENDED   <none>                    5         2s
+```
+
+The actor was suspended as soon as the turn ended. **There is no idle timeout to configure.** kagent
+checks every second for conversations whose last turn has finished and suspends them, so idle lasts
+about a second. A turn that ends waiting for input (approval, authentication) pauses the actor on
+its worker instead of suspending it.
+
+Send the second turn in the same conversation:
+
+```bash run id=step-11-turn-2
+kagent_send assistant "What is my project called?" "$CONV"
+wait_suspended "$CONV"
+actor_events "$CONV"
+```
+
+**Verified on 2026-10-11:**
+
+```text
+TASK_STATE_COMPLETED	01a12d2c-06eb-7d28-9295-4e7724b09ba3	Your project is called Larkspur.
+suspended (polled 1s after the reply)
+22:53:42.706	Restore timing breakdown	golden/full	118 ms
+22:53:44.343	Checkpoint timing breakdown	latest/data	39 ms
+22:53:44.940	Restore timing breakdown	latest/data	85 ms
+22:53:46.336	Checkpoint timing breakdown	latest/data	33 ms
+```
+
+The agent remembered, and atelet's log shows how:
+
+| Event | Snapshot | What it means |
+|---|---|---|
+| First restore | `golden/full` | The new actor started from the agent's golden memory image |
+| Checkpoint | `latest/data` | At the end of the turn, only the conversation's data directory was saved |
+| Second restore | `latest/data` | Memory again from the golden image, the conversation's data on top |
+| Checkpoint | `latest/data` | Saved again, replacing the previous one |
+
+A suspended conversation can resume on a different worker from the one it last ran on, because
+everything it needs is in the snapshot store.
+
+### Step 12: Inspect and act on an actor
+
+kagent drives actors for you. kubectl-ate lets you look at one and act on it directly, which is
+what you need when a conversation is stuck:
+
+```bash run id=step-12-inspect
+kubectl-ate get actor "session-${CONV}" -a kagent -o json \
+  | jq '{name: .metadata.name, uid: .metadata.uid, version: .metadata.version, state: .status.state, snapshot: .status.externalSnapshot}'
+```
+
+**Verified on 2026-10-11:**
+
+```text
+{
+  "name": "session-01a12d2c-06eb-7d28-9295-4e7724b09ba3",
+  "uid": "c674cec9-c3a8-4fd6-b1a6-4995cd42b41b",
+  "version": "9",
+  "state": "ACTOR_STATE_SUSPENDED",
+  "snapshot": {
+    "actorTemplateUid": "eaa9d93f-2679-42ea-b999-fd7c462d329f",
+    "contentScope": "SNAPSHOT_CONTENT_SCOPE_DATA",
+    "snapshotUri": "gs://ate-snapshots/kagent/atespaces/kagent/actors/c674cec9-c3a8-4fd6-b1a6-4995cd42b41b/snapshots/3f3823a8-46d8-40d9-a176-d71c09cced53"
+  }
+}
+```
+
+`version` counts state changes: every turn moves it through resuming, running, suspending and
+suspended. `snapshot` is where its latest checkpoint is.
+
+Resume it by hand, see it placed on a worker, then suspend it again:
+
+```bash run id=step-12-resume-suspend
+kubectl-ate resume actor "session-${CONV}" -a kagent
+kubectl-ate get workers
+kubectl-ate suspend actor "session-${CONV}" -a kagent
+```
+
+**Verified on 2026-10-11:**
+
+```text
+ATESPACE   NAME                                           TEMPLATE                        STATE                 WORKER POD                              WORKER IPS    VERSION   AGE
+kagent     session-01a12d2c-06eb-7d28-9295-4e7724b09ba3   kagent/assistant-90a6c0400503   ACTOR_STATE_RUNNING   kagent/kagent-default-ff8dfbd47-spzlw   10.244.0.22   11        4s
+NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                     AGE
+ae172888-828a-4ac2-8ef2-413c2aa7edfb   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-ff8dfbd47-7gsk8   21m
+7212ab89-0a3c-4293-8024-2d17dfcd05af   kagent-default   WORKER_STATE_ACTIVE   1/1000   0/6   0/12220312Ki   kagent/kagent-default-ff8dfbd47-spzlw   21m
+ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
+kagent     session-01a12d2c-06eb-7d28-9295-4e7724b09ba3   kagent/assistant-90a6c0400503   ACTOR_STATE_SUSPENDED   <none>                    13        4s
+```
+
+> [!WARNING]
+> **A hand-resumed actor stays running until a turn ends or you suspend it.** kagent suspends an actor when a turn finishes, and a resume with no turn never finishes one, so the actor holds its place on a worker indefinitely. Suspend what you resume.
+
+### Step 13: Where a conversation's context is kept
+
+The conversation survived suspension because atelet wrote it to the snapshot store. With the
+bundled store, that is the RustFS bucket `ate-snapshots`, under the prefix the Harness's
+`snapshotPolicy.location` named (`kagent/`).
+
+This helper lists a prefix in that bucket from a short-lived pod in `ate-system`. It reads the
+store's credentials from the atelet DaemonSet, which is where the chart puts them:
+
+```bash run id=step-13-helpers
+# snapshot_ls <prefix>: list objects under s3://ate-snapshots/<prefix>.
+snapshot_ls() {
+  local ak sk
+  ak=$(kubectl get daemonset atelet -n ate-system -o json | jq -r '[.spec.template.spec.containers[].env[]? | select(.name=="AWS_ACCESS_KEY_ID")][0].value')
+  sk=$(kubectl get daemonset atelet -n ate-system -o json | jq -r '[.spec.template.spec.containers[].env[]? | select(.name=="AWS_SECRET_ACCESS_KEY")][0].value')
+  kubectl delete pod snapshot-ls -n ate-system --ignore-not-found >/dev/null
+  kubectl create -f- >/dev/null <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: snapshot-ls
+  namespace: ate-system
+  labels: {app: snapshot-ls}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: aws
+      image: ${AWS_CLI_IMAGE}
+      args: ["s3", "ls", "--recursive", "s3://ate-snapshots/$1", "--endpoint-url", "http://rustfs.ate-system.svc:9000"]
+      env:
+        - {name: AWS_ACCESS_KEY_ID, value: "${ak}"}
+        - {name: AWS_SECRET_ACCESS_KEY, value: "${sk}"}
+        - {name: AWS_DEFAULT_REGION, value: us-east-1}
+EOF
+  local phase="" waited=0 out
+  while [ "$waited" -lt 120 ]; do
+    phase=$(kubectl get pod snapshot-ls -n ate-system -o jsonpath='{.status.phase}')
+    case "$phase" in Succeeded|Failed) break ;; esac
+    sleep 1; waited=$((waited + 1))
+  done
+  out=$(kubectl logs pod/snapshot-ls -n ate-system)
+  if [ -n "$out" ]; then echo "$out"; else echo "(no objects)"; fi
+  kubectl delete pod snapshot-ls -n ate-system --wait=false >/dev/null
+}
+```
+
+`aws s3 ls` exits 1 when a prefix holds nothing, so the pod ends `Failed` for an empty prefix. The
+helper waits for the pod to finish either way and prints `(no objects)` rather than reading the
+phase as an answer.
+
+List this conversation's snapshot, and the agent's golden image:
+
+```bash run id=step-13-snapshot-objects
+export CONV_ACTOR_UID=$(kubectl-ate get actor "session-${CONV}" -a kagent -o json | jq -r .metadata.uid)
+echo "-- conversation ${CONV} (actor ${CONV_ACTOR_UID})"
+snapshot_ls "kagent/atespaces/kagent/actors/${CONV_ACTOR_UID}/"
+echo "-- golden images"
+snapshot_ls "kagent/atespaces/ate-golden/tags/"
+```
+
+**Verified on 2026-10-11:**
+
+```text
+-- conversation 01a12d2c-06eb-7d28-9295-4e7724b09ba3 (actor c674cec9-c3a8-4fd6-b1a6-4995cd42b41b)
+2026-10-11 22:53:46       1597 kagent/atespaces/kagent/actors/c674cec9-c3a8-4fd6-b1a6-4995cd42b41b/snapshots/ed34b22a-5291-4b39-acb6-8bbdb8c67000/durable-dir.tar.zstd
+2026-10-11 22:53:46        609 kagent/atespaces/kagent/actors/c674cec9-c3a8-4fd6-b1a6-4995cd42b41b/snapshots/ed34b22a-5291-4b39-acb6-8bbdb8c67000/manifest.json
+-- golden images
+2026-10-11 22:34:55      79024 kagent/atespaces/ate-golden/tags/5fd81a10-392e-440c-874c-7771c589ac3e/checkpoint.img.zstd
+2026-10-11 22:34:55        896 kagent/atespaces/ate-golden/tags/5fd81a10-392e-440c-874c-7771c589ac3e/durable-dir.tar.zstd
+2026-10-11 22:34:55        651 kagent/atespaces/ate-golden/tags/5fd81a10-392e-440c-874c-7771c589ac3e/manifest.json
+2026-10-11 22:34:55     999123 kagent/atespaces/ate-golden/tags/5fd81a10-392e-440c-874c-7771c589ac3e/pages.img.zstd
+2026-10-11 22:34:55       1932 kagent/atespaces/ate-golden/tags/5fd81a10-392e-440c-874c-7771c589ac3e/pages_meta.img.zstd
+```
+
+Each conversation keeps one snapshot: its data directory, a few kilobytes, which each checkpoint
+replaces. Inside it is the runtime's session database, and that **is the conversation, in readable
+text**: compressed with zstd, not encrypted. The golden image is the agent's memory, shared by every
+conversation with that agent. kagent's own Postgres holds a second copy of each conversation's
+events.
+
+> [!WARNING]
+> **Anyone who can read the atelet DaemonSet has the store's credentials, and with the chart's defaults anyone who can reach the store can read every conversation.** The helper above works for exactly that reason. Step 22 replaces the credentials and fences the store so that only atelet and ate-api can reach it. Until then, treat every conversation on this cluster as readable by anything in it.
+
+### Step 14: Delete a conversation, and what stays behind
+
+kagent's session API is gRPC only, with no JSON or REST form. Deleting a session is one string
+field, so this helper frames the gRPC-Web request by hand: five bytes of frame header, then the
+field (tag `0x0a`, length 36, the conversation ID):
+
+```bash run id=step-14-helpers
+# kagent_delete_session <conversation id>: SessionService/DeleteSession; prints grpc-status.
+kagent_delete_session() {
+  printf '\000\000\000\000\046\012\044%s' "$1" \
+    | curl -sS --max-time 30 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/kagent.api.v1alpha1.SessionService/DeleteSession" \
+        -H "Authorization: Bearer $(kagent_token)" \
+        -H 'Content-Type: application/grpc-web+proto' -H 'X-Grpc-Web: 1' --data-binary @- \
+    | LC_ALL=C tr -c '[:print:]' '\n' | grep -E '^grpc-(status|message)'
+}
+```
+
+`grpc-status: 0` is success. Anything else comes with a `grpc-message` saying why.
+
+Delete the conversation, then check the actor, the snapshot and the worker node:
+
+```bash run id=step-14-delete
+kagent_delete_session "$CONV"
+kubectl-ate get actor "session-${CONV}" -a kagent 2>&1 || true
+echo "-- snapshot objects left for the actor:"
+snapshot_ls "kagent/atespaces/kagent/actors/${CONV_ACTOR_UID}/"
+echo "-- directory left on the node:"
+docker exec "${KIND_CLUSTER_NAME}-control-plane" ls /var/lib/ate/actors/${CONV_ACTOR_UID}
+```
+
+**Verified on 2026-10-11:**
+
+```text
+grpc-status: 0
+Error: failed to get actor "session-01a12d2c-06eb-7d28-9295-4e7724b09ba3": rpc error: code = NotFound desc = Actor kagent/session-01a12d2c-06eb-7d28-9295-4e7724b09ba3 not found
+-- snapshot objects left for the actor:
+(no objects)
+-- directory left on the node:
+bundles
+checkpoint-state
+durable-dir
+pidfiles
+restore-state
+runsc-state
+sandbox-assets.json
+system-info
+volumes
+```
+
+The actor is gone from Substrate and its snapshot from the store. **Its directory on the node is
+not.** Every conversation ever placed on a node leaves `/var/lib/ate/actors/<actor uid>/` behind,
+a few dozen kilobytes of empty subdirectories and one small file, and nothing removes them. Plan
+node disk and inodes for it; Before production covers it. On a cluster other than kind, read the
+directory through a node shell rather than `docker exec`.
+
+Deleting an `Agent` does not delete its conversations. Its actor template and golden image stay
+in Substrate for as long as any of its conversations exist, and went about half a minute after the
+last one was deleted (observed once, on this release). Delete an agent's conversations as well as
+the `Agent` when you retire it.
+
+### Step 15: Choose a Harness
+
+An `Agent` pairs a template with a harness, and the two are independent. The `assistant` template
+says what the agent is; the harness says what runs it. This runs the same template on the Claude
+Code runtime instead of kagent's Go ADK runtime, with no change to the template, the model
+configuration or the gateway:
+
+```bash run id=harness-claude-code
+kubectl apply -f- <<EOF
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: claude-code
+  namespace: kagent
+spec:
+  claude: {}
+  workload:
+    image: ${CLAUDE_HARNESS_IMAGE}
+  substrate:
+    workerPoolRef:
+      name: kagent-default
+    snapshotPolicy:
+      location: gs://ate-snapshots/kagent/
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: assistant-claude-code
+  namespace: kagent
+spec:
+  templateRef:
+    name: assistant
+  harnessRef:
+    name: claude-code
+EOF
+kubectl wait agent/assistant-claude-code -n kagent --for=condition=Ready --timeout=300s
+```
+
+**Verified on 2026-10-11:**
+
+```text
+harness.api.kagent.dev/claude-code created
+agent.api.kagent.dev/assistant-claude-code created
+agent.api.kagent.dev/assistant-claude-code condition met
+```
+
+```bash run id=step-15-claude-code-turn
+TURN=$(kagent_send assistant-claude-code "Reply with exactly: claude code harness")
+echo "$TURN"
+kubectl-ate get egress-policy "session-$(echo "$TURN" | cut -f2)" --atespace kagent -o json \
+  | jq -r '.rules[] | to_entries[0] | "\(.key)\t\(.value.hostnames[0]):\(.value.ports.numbers[0])\t\([.value.effects.replaceHeaders[]? | "\(.header) <- \(.credentialUri)"] | join(", "))"'
+```
+
+**Verified on 2026-10-11:**
+
+```text
+TASK_STATE_COMPLETED	01a12d2c-587a-711c-a016-58d7062f931a	claude
+http	agentgateway-proxy.agentgateway-system.svc.cluster.local:80	x-api-key <- ate-secret://k8s.io/default/kagent/kagent-gateway-consumer-key/api-key
+http	kagent-controller.kagent:8083
+```
+
+Same consumer key, same injection, same gateway. The runtime changed and nothing around it did.
+
+One difference: this actor's allowlist has no `api.anthropic.com` rule. The kagent runtime's
+actors get one whatever `baseUrl` says (Step 9); the Claude Code runtime's do not, so its actors
+can reach the provider only through the gateway.
+
+Four harness kinds exist on this release, and an Agent's harness names exactly one:
+
+| Kind | What runs | In this guide |
+|---|---|---|
+| `kagent` | kagent's Go ADK runtime | Steps 8 to 14 |
+| `claude` | Claude Code | This step |
+| `codex` | OpenAI Codex | Not covered: not verified on this release |
+| `byo` | Your own image | Not covered: see below |
+
+`byo` is the path for other frameworks, such as LangGraph or CrewAI, and it is not a plain
+container: the image must implement kagent's agent contract, which kagent's adapter packages for
+those frameworks provide. An unmodified framework image does not run.
+
+**What you now have:** the lifecycle of a conversation, end to end, and the commands to see each
+stage: the template and golden image behind an agent, an actor per conversation that holds nothing
+while suspended, context in the snapshot store, and what deletion leaves behind. You have also seen
+how exposed that context is. Isolate starts there.
