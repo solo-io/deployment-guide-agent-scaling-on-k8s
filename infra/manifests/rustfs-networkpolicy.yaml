@@ -1,0 +1,33 @@
+# Restricts the in-cluster snapshot store (RustFS, deployed by the Substrate chart) to the
+# components that read and write snapshots. Without it, any pod in the cluster that knows the
+# credentials can list and read every conversation snapshot.
+#
+# Allowed, S3 API port 9000 only:
+#   - atelet (uploads and downloads snapshots)
+#   - ate-api-server (lists, copies and deletes snapshot objects)
+#   - the chart's rustfs-bucket-init Job (creates the bucket on install)
+# The console port 9001 is not allowed from anywhere: the chart has no setting to disable it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rustfs-snapshot-store
+  namespace: ate-system
+spec:
+  podSelector:
+    matchLabels:
+      app: rustfs
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: atelet
+        - podSelector:
+            matchLabels:
+              app: ate-api-server
+        - podSelector:
+            matchLabels:
+              job-name: rustfs-bucket-init
+      ports:
+        - protocol: TCP
+          port: 9000

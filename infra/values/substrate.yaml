@@ -9,3 +9,9 @@ credentialProvider:
   namespacePolicies:
     - atespace: kagent
       allowedNamespaces: [kagent]
+# RustFS (the snapshot store) defaults to rustfsadmin/rustfsadmin. The chart cannot read these from
+# a Secret: it writes them as plain values into the RustFS, bucket-init, atelet and ate-api pod specs.
+# Pass non-default values at install time instead of committing them:
+#   --set-string rustfs.accessKey="$RUSTFS_ACCESS_KEY" --set-string rustfs.secretKey="$RUSTFS_SECRET_KEY"
+# The chart has no setting to disable the RustFS console (port 9001);
+# infra/manifests/rustfs-networkpolicy.yaml blocks it.
