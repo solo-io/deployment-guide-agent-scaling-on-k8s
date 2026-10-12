@@ -2988,3 +2988,244 @@ worker.
 **What you now have:** a measured picture of what conversations cost on this platform: memory per
 turn in flight, storage per conversation waiting, a CPU limit per node, and a pool you can grow
 without a gap in service.
+
+## VALIDATE
+
+Everything above was proved one control at a time. This section sends one conversation through all
+of them and checks each result against the step that set it up. If something breaks later, this is
+the section to run first.
+
+**What you are going to do:** sign in, run one conversation that calls a model and an MCP tool, then
+check the conversation from every side: its sandbox, its credentials, its egress, the gateway, the
+MCP server, the fences, and another user's access.
+
+**What you will have that you did not have before:** one pass that tells you whether the whole
+platform still does what each step said it would, and which step to go back to when it does not.
+
+**Verified on:** kind cluster `agents`, continuing from Scale, 2026-10-12 02:49 UTC. Every `run` block in this section was executed verbatim, in document order, with `auto-build/run.sh --from step-30-helpers`. One model call; 16 checks, 0 failed.
+
+### Step 30: Drive one conversation through every control
+
+*Runtime: kagent (agent `deployment-helper`, which calls the model and the MCP tool). One model call.*
+
+`record` prints one check: the step that set the control up, what was checked, what was observed, and
+whether that matches what the step said. It also keeps the line for Step 31:
+
+```bash run id=step-30-helpers
+# record <step> <what was checked> <observed> <expected: an extended regular expression>
+record() {
+  local status=FAIL
+  printf '%s' "$3" | grep -qE -- "$4" && status=PASS
+  VALIDATE_RESULTS="${VALIDATE_RESULTS:-}${status}|$1|$2|$3"$'\n'
+  printf '%-4s  %-12s  %s: %s\n' "$status" "$1" "$2" "$3"
+}
+```
+
+**Who is calling.** Keycloak issues the token, and the controller refuses a call without one:
+
+```bash run id=step-30-identity
+VALIDATE_RESULTS=""
+TOKEN=$(kagent_token)
+record "Step 23" "Keycloak token for writer" "$([ -n "$TOKEN" ] && [ "$TOKEN" != null ] && echo issued || echo none)" '^issued$'
+record "Step 23" "API call with no token" "HTTP $(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/deployment-helper" -H 'Content-Type: application/json' -d '{}')" '^HTTP 401$'
+```
+
+**Verified on 2026-10-12:**
+
+```text
+PASS  Step 23       Keycloak token for writer: issued
+PASS  Step 23       API call with no token: HTTP 401
+```
+
+**The conversation.** One turn that needs both the model and the tool:
+
+```bash run id=step-30-conversation
+TURN=$(kagent_send deployment-helper "What is the deployment code for the service billing? Use the tool.")
+export VALIDATE_CONV=$(echo "$TURN" | cut -f2)
+record "Steps 8, 20" "Turn using the model and the MCP tool" "$(echo "$TURN" | cut -f1,3 | tr '\t\n' '  ')" 'TASK_STATE_COMPLETED.*K7-teal-otter-0429'
+wait_suspended "$VALIDATE_CONV" >/dev/null
+record "Steps 10, 11" "First restore of the conversation's actor" "$(actor_events "$VALIDATE_CONV" | head -1 | cut -f2,3 | tr '\t' ' ')" '^Restore timing breakdown golden/full$'
+record "Step 11" "Actor state after the turn" "$(kubectl-ate get actor "session-${VALIDATE_CONV}" -a kagent -o json | jq -r .status.state)" '^ACTOR_STATE_SUSPENDED$'
+```
+
+**Verified on 2026-10-12:**
+
+```text
+PASS  Steps 8, 20   Turn using the model and the MCP tool: TASK_STATE_COMPLETED The deployment code for the billing service is **K7-teal-otter-0429**. 
+PASS  Steps 10, 11  First restore of the conversation's actor: Restore timing breakdown golden/full
+PASS  Step 11       Actor state after the turn: ACTOR_STATE_SUSPENDED
+```
+
+**Inside the sandbox.** Resume the actor and look:
+
+```bash run id=step-30-sandbox
+kubectl-ate resume actor "session-${VALIDATE_CONV}" -a kagent >/dev/null
+record "Step 16" "Kernel the agent sees" "$(sandbox_exec "$VALIDATE_CONV" uname -r)" 'gvisor'
+record "Step 18" "Model credential the agent holds" "$(sandbox_exec "$VALIDATE_CONV" cat /proc/1/environ | tr '\0' '\n' | grep '^ANTHROPIC_API_KEY=')" '^ANTHROPIC_API_KEY=kagent-credential-injected$'
+record "Step 18" "Consumer key in the sandbox's filesystem" "$(sandbox_exec "$VALIDATE_CONV" tar -cf - --exclude=./proc --exclude=./sys -C / . \
+  | LC_ALL=C grep -a -c -F "$AGENT_CONSUMER_KEY" || true) occurrences" '^0 occurrences$'
+record "Step 19" "A destination outside the egress policy" "$(sandbox_exec "$VALIDATE_CONV" wget -T 10 -O /dev/null https://example.com/ | grep -o 'HTTP/1.1 [0-9]* [A-Za-z]*' | head -1)" '403 Forbidden'
+kubectl-ate suspend actor "session-${VALIDATE_CONV}" -a kagent >/dev/null
+```
+
+**Verified on 2026-10-12:**
+
+```text
+PASS  Step 16       Kernel the agent sees: 4.19.0-gvisor
+PASS  Step 18       Model credential the agent holds: ANTHROPIC_API_KEY=kagent-credential-injected
+PASS  Step 18       Consumer key in the sandbox's filesystem: 0 occurrences
+PASS  Step 19       A destination outside the egress policy: HTTP/1.1 403 Forbidden
+```
+
+**Where the calls went.** The gateway's record of the model call, its metrics, its budget policy, and
+the MCP server's record of the tool call:
+
+```bash run id=step-30-gateway
+EGRESS_IP=$(kubectl get pod -n ate-system -l app=atenet-egress -o jsonpath='{.items[0].status.podIP}')
+GATEWAY_IP=$(kubectl get pod -n agentgateway-system -l gateway.networking.k8s.io/gateway-name=agentgateway-proxy -o jsonpath='{.items[0].status.podIP}')
+record "Steps 6, 7, 9" "Model call at the gateway, from Substrate egress" "$(kubectl logs -n agentgateway-system deployment/agentgateway-proxy --since=10m \
+  | grep 'route=agentgateway-system/anthropic-messages' | grep "src.addr=${EGRESS_IP}:" | tail -1 | grep -oE 'http.status=[0-9]+')" '^http.status=200$'
+record "Step 20" "Tool call at the MCP server: source, credential" "$(kubectl logs -n mcp-tools deployment/deployment-codes \
+  | jq -r 'select(.rpc == "tools/call") | "\(.src) \(.auth)"' | tail -1)" "^${GATEWAY_IP} bearer-match$"
+kubectl port-forward --address 127.0.0.1 -n agentgateway-system deployment/agentgateway-proxy 18082:15020 >/dev/null 2>&1 &
+PF=$!; sleep 3
+if kill -0 $PF 2>/dev/null; then
+  ATTRIBUTED=$(curl -sS http://127.0.0.1:18082/metrics | grep '^agentgateway_gen_ai_client_token_usage_sum' | grep -c 'team="team-agents"' || true)
+  kill $PF; wait $PF 2>/dev/null || true
+else
+  ATTRIBUTED="port-forward on 18082 did not start"
+fi
+record "Step 21" "Token metric series attributed to team-agents" "${ATTRIBUTED}" '^[1-9][0-9]*$'
+record "Step 21" "Budget enforcement policy" "$(kubectl get enterpriseagentgatewaypolicy llm-budget-enforcement -n agentgateway-system \
+  -o jsonpath='{range .status.ancestors[*].conditions[*]}{.type}={.status} {end}')" 'Accepted=True.*Attached=True'
+```
+
+**Verified on 2026-10-12:**
+
+```text
+PASS  Steps 6, 7, 9  Model call at the gateway, from Substrate egress: http.status=200
+PASS  Step 20       Tool call at the MCP server: source, credential: 10.244.0.27 bearer-match
+PASS  Step 21       Token metric series attributed to team-agents: 4
+PASS  Step 21       Budget enforcement policy: Accepted=True Attached=True
+```
+
+**The fences and the other user.** A pod that is not supposed to reach the gateway or the snapshot
+store, and a reader trying to continue the writer's conversation:
+
+```bash run id=step-30-fences
+record "Step 7" "Another pod reaching the gateway" "$(kubectl run validate-fence -n default --rm -i --restart=Never --image=busybox:1.36 --quiet -- \
+  sh -c 'wget -T 8 -O /dev/null http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages 2>&1 | tail -1' < /dev/null)" 'timed out'
+record "Step 22" "Another pod reaching the snapshot store" "$(snapshot_ls "kagent/" | tail -1)" '[Tt]imeout'
+record "Step 24" "Reader continuing the writer's conversation" "$(KAGENT_USER=reader kagent_send deployment-helper "hello" "$VALIDATE_CONV" | tr '\t' ' ')" '^REFUSED'
+```
+
+**Verified on 2026-10-12:**
+
+```text
+PASS  Step 7        Another pod reaching the gateway: wget: download timed out
+PASS  Step 22       Another pod reaching the snapshot store: Connect timeout on endpoint URL: "http://rustfs.ate-system.svc:9000/ate-snapshots?list-type=2&prefix=kagent%2F&encoding-type=url"
+PASS  Step 24       Reader continuing the writer's conversation: REFUSED permission denied
+```
+
+### Step 31: Map each result to the step that set it
+
+```bash run id=step-31-summary
+printf '%s' "$VALIDATE_RESULTS" | awk -F'|' 'NF >= 3 {printf "%-4s  set in %-12s  %s\n", $1, $2, $3}'
+FAILED=$(printf '%s' "$VALIDATE_RESULTS" | grep -c '^FAIL' || true)
+echo "checks: $(printf '%s' "$VALIDATE_RESULTS" | grep -c '|' || true), failed: ${FAILED}"
+```
+
+**Verified on 2026-10-12:**
+
+```text
+PASS  set in Step 23       Keycloak token for writer
+PASS  set in Step 23       API call with no token
+PASS  set in Steps 8, 20   Turn using the model and the MCP tool
+PASS  set in Steps 10, 11  First restore of the conversation's actor
+PASS  set in Step 11       Actor state after the turn
+PASS  set in Step 16       Kernel the agent sees
+PASS  set in Step 18       Model credential the agent holds
+PASS  set in Step 18       Consumer key in the sandbox's filesystem
+PASS  set in Step 19       A destination outside the egress policy
+PASS  set in Steps 6, 7, 9  Model call at the gateway, from Substrate egress
+PASS  set in Step 20       Tool call at the MCP server: source, credential
+PASS  set in Step 21       Token metric series attributed to team-agents
+PASS  set in Step 21       Budget enforcement policy
+PASS  set in Step 7        Another pod reaching the gateway
+PASS  set in Step 22       Another pod reaching the snapshot store
+PASS  set in Step 24       Reader continuing the writer's conversation
+checks: 16, failed: 0
+```
+
+Every check names the step that set it up, so a `FAIL` sends you back to one place. Read them in the
+order a turn passes through the platform:
+
+| Order | Control | Set in | Checked by |
+|---|---|---|---|
+| 1 | The caller signs in to Keycloak and the controller verifies the token | Step 23 | Keycloak token, API call with no token |
+| 2 | The caller's role allows the conversation | Step 24 | Reader continuing the writer's conversation |
+| 3 | Substrate restores the conversation's actor from the agent's golden image | Steps 10, 11 | First restore |
+| 4 | The agent runs in its own gVisor sandbox | Step 16 | Kernel the agent sees |
+| 5 | The agent holds a placeholder, not a key | Step 18 | Model credential, consumer key in the filesystem |
+| 6 | Substrate's egress gateway allows only the destinations in the policy | Step 19 | A destination outside the policy |
+| 7 | Substrate's egress gateway injects the consumer key and sends the call to the enterprise gateway, which nothing else can reach | Steps 6, 7, 9 | Model call at the gateway, another pod reaching the gateway |
+| 8 | The enterprise gateway attributes the tokens and enforces the team's budget | Step 21 | Token metrics, budget policy |
+| 9 | Tool calls reach the MCP server through the gateway, with the server's credential added there | Step 20 | Tool call at the MCP server |
+| 10 | When the turn ends, the conversation is checkpointed to the fenced snapshot store and suspended | Steps 11, 22 | Actor state after the turn, another pod reaching the store |
+
+### What you built
+
+A platform that runs agents the way a cluster runs any shared service, with the per-conversation
+isolation an agent needs:
+
+- **kagent** declares agents as Kubernetes resources and turns each conversation into a Substrate
+  actor. Two runtimes, the kagent ADK and Claude Code, behind the same declaration.
+- **Agent Substrate** runs each conversation in its own gVisor sandbox on a shared pool of workers,
+  restores it from a warm snapshot when a message arrives, and suspends it when the turn ends, so a
+  waiting conversation holds no memory.
+- **Every credential stays outside the agent.** Substrate's egress gateway injects the consumer key
+  on the way out, and the actor can reach only the destinations kagent compiled into its policy.
+- **Solo Enterprise for agentgateway** is the one path to the model and to MCP tools: it holds the
+  provider key and the tool server's credential, authenticates each team's consumer key, attributes
+  every token and enforces budgets, and nothing else in the cluster can reach it.
+- **Conversation data** sits in a snapshot store only atelet and ate-api can reach, under credentials
+  you generated.
+- **Keycloak** authenticates every caller of the UI and API, and its groups decide who can chat and
+  who can only read.
+
+What it does not do yet is in Before production.
+
+## Before production
+
+Each item is a limit of this release that you can plan for, with the step that shows it.
+
+- **Disable or delete the `kagent-cli` client.** It issues tokens by password without a browser, for
+  scripts. Disable it once scripting is done (Step 23 has the command), and give production scripts
+  a confidential client with the client credentials grant.
+- **Treat the snapshot store as holding every conversation in readable form.** It is compressed, not
+  encrypted. Keep the NetworkPolicy from Step 22, keep the credentials out of anything you commit,
+  and if you use an external store, turn on the bucket's default encryption. An external store can be
+  wired for atelet but not for ate-api through the chart (Steps 13 and 22).
+- **Rotate the CA pools before they expire.** They are valid for one year from Step 4 and nothing
+  rotates them; when they expire, nothing issued from them validates. Rotation replaces the pools and
+  every trust root issued from them.
+- **Plan node disk and inodes for actor directories.** Every conversation ever placed on a node
+  leaves a directory there, about 40 KB, and nothing removes them (Steps 14 and 27).
+- **Keep CPU headroom for worker rollouts.** A worker pool rollout removes a worker before starting
+  its replacement; add a worker before changing worker resources (Step 29).
+- **Restrict access to the `kagent` namespace.** The kagent controller holds the model key and MCP
+  header values in its process (Step 18), and the gateway NetworkPolicy admits the controller by
+  label, so anyone who can create pods there with its labels can reach the gateway (Step 7).
+- **Keep the hop from Substrate's egress to the enterprise gateway inside the cluster.** It is plain
+  HTTP: an `https://` base URL to a private certificate fails, because Substrate's egress trusts only
+  public CAs (Step 8).
+- **Budget and attribute per key.** Spend is attributed to the consumer key's user and group, not to
+  the person in the conversation, so issue keys per team or per agent (Step 21).
+- **Expect a blocked budget to look like a failed turn.** The runtime retries a `429` three times,
+  each counted as a request, then fails the turn with the gateway's error (Step 21).
+- **Treat who-talks-to-which-agent as visible to every signed-in user.** Any role, reader included,
+  can list every user's conversation IDs for an agent; contents stay private (Step 24).
+- **Delete an agent's conversations when you retire it.** Deleting the `Agent` leaves its template
+  and golden image in place while any conversation exists (Step 14).
+- **Use gVisor.** It is the sandbox verified here; Firecracker was not tested on this release.
