@@ -28,18 +28,20 @@ CREDENTIALS = ["KAGENT_LICENSE_KEY", "AGENTGATEWAY_LICENSE_KEY", "ANTHROPIC_API_
 RESTORE = """\
 sec() { kubectl get secret "$2" -n "$1" -o jsonpath="{.data.$3}" 2>/dev/null | base64 --decode || true; }
 if kubectl get secret llm-virtual-keys -n agentgateway-system >/dev/null 2>&1; then
-  export AGENT_CONSUMER_KEY=$(sec agentgateway-system llm-virtual-keys team-agents | jq -r .key)
+  v=$(sec agentgateway-system llm-virtual-keys team-agents | jq -r .key); if [ -n "$v" ]; then export AGENT_CONSUMER_KEY=$v; fi
 fi
 oldest_conv() {
   kubectl-ate get actors -a kagent -o json 2>/dev/null \\
     | jq -r --arg t "$1-" '[.actors[]? | select(.actorTemplate.name // "" | test("^" + $t + "[0-9a-f]{12}$"))] | sort_by(.metadata.createTime) | .[0].metadata.name // empty' \\
     | sed 's/^session-//'
 }
-export FIRST_CONTEXT=$(oldest_conv assistant)
-export CLAUDE_CONTEXT=$(oldest_conv assistant-claude-code)
-export MCP_SERVER_TOKEN=$(sec mcp-tools deployment-codes-token MCP_TOKEN)
-export KEYCLOAK_ADMIN_PASSWORD=$(sec keycloak keycloak-admin password)
-export KAGENT_OIDC_CLIENT_SECRET=$(sec keycloak keycloak-realm 'realm\\.json' | jq -r '.clients[]? | select(.clientId == "kagent-backend") | .secret' 2>/dev/null)
+# Only overwrite what the cluster actually holds, so values exported beforehand survive.
+setif() { if [ -n "$2" ]; then export "$1=$2"; fi; }
+setif FIRST_CONTEXT "$(oldest_conv assistant)"
+setif CLAUDE_CONTEXT "$(oldest_conv assistant-claude-code)"
+setif MCP_SERVER_TOKEN "$(sec mcp-tools deployment-codes-token MCP_TOKEN)"
+setif KEYCLOAK_ADMIN_PASSWORD "$(sec keycloak keycloak-admin password)"
+setif KAGENT_OIDC_CLIENT_SECRET "$(sec keycloak keycloak-realm 'realm\\.json' | jq -r '.clients[]? | select(.clientId == "kagent-backend") | .secret' 2>/dev/null)"
 for u in admin writer reader norole; do
   v=$(sec keycloak keycloak-realm 'realm\\.json' | jq -r --arg u "$u" '.users[]? | select(.username == $u) | .credentials[0].value' 2>/dev/null)
   if [ -n "$v" ]; then export "KAGENT_$(echo "$u" | tr '[:lower:]' '[:upper:]')_PASSWORD=$v"; fi

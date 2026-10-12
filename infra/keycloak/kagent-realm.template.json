@@ -80,8 +80,8 @@
     },
     {
       "clientId": "kagent-cli",
-      "name": "kagent scripts and CLI (public, password grant; lab only)",
-      "enabled": true,
+      "name": "kagent scripts and CLI (public, password grant; lab only, disabled until Step 23 enables it)",
+      "enabled": false,
       "publicClient": true,
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": true,

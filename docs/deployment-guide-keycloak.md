@@ -1514,7 +1514,7 @@ of the UI and API authenticated, with roles deciding who can chat.
 Each step says which runtime it shows: the kagent Go ADK runtime (agent `assistant`) or Claude Code
 (agent `assistant-claude-code`, from Step 15).
 
-**Verified on:** kind cluster `agents`, continuing from Operate, 2026-10-11 23:12 UTC to 2026-10-12 02:22 UTC. Every `run` block was executed verbatim, in document order, with `auto-build/run.sh`, resuming at the failing block after each fix; no block was rolled back. Two interruptions were not the guide's: the Keycloak image pull stalled across a host sleep and was completed with `kind load docker-image`; and the runner twice created an empty Secret on resume (since fixed in the runner), which is why the Step 23 upgrade shows revision 4 where a clean run shows 2.
+**Verified on:** kind cluster `agents`, continuing from Operate, 2026-10-11 23:12 UTC to 2026-10-12 02:22 UTC. Every `run` block was executed verbatim, in document order, with `auto-build/run.sh`, resuming at the failing block after each fix; no block was rolled back. Two interruptions were not the guide's: the Keycloak image pull stalled across a host sleep and was completed with `kind load docker-image`; and the runner twice created an empty Secret on resume (since fixed in the runner). Step 23 was then re-run from `keycloak-realm` at 2026-10-12 02:34 UTC, after the realm's `kagent-cli` client was changed to ship disabled; together these are why its upgrade shows revision 5 where a clean run shows 2.
 
 ### Step 16: One gVisor sandbox per conversation
 
@@ -2344,7 +2344,8 @@ export KAGENT_NOROLE_PASSWORD=$(openssl rand -hex 12)
 
 The realm is in this repository at `infra/keycloak/kagent-realm.template.json`: three clients
 (`kagent-backend` for the controller, `kagent-ui` for the browser with PKCE, and `kagent-cli` for
-scripts, with the password grant on), groups `admins`, `writers` and `readers`, and four users. Fill
+scripts, with the password grant on and the client **disabled**), groups `admins`, `writers` and
+`readers`, and four users. Fill
 in its placeholders and load it into a Secret. The block resolves the file with
 `git rev-parse --show-toplevel`, so it works from any directory inside the clone:
 
@@ -2364,14 +2365,14 @@ echo "placeholders left in the realm: $(kubectl get secret keycloak-realm -n key
 echo "realm size: $(kubectl get secret keycloak-realm -n keycloak -o jsonpath='{.data.realm\.json}' | base64 --decode | wc -c | tr -d ' ') bytes"
 ```
 
-**Verified on 2026-10-11:**
+**Verified on 2026-10-12:**
 
 ```text
 namespace/keycloak created
 secret/keycloak-admin created
 secret/keycloak-realm created
 placeholders left in the realm: 0
-realm size: 4248 bytes
+realm size: 4284 bytes
 ```
 
 > [!WARNING]
@@ -2430,11 +2431,12 @@ EOF
 kubectl rollout status deployment/keycloak -n keycloak --timeout=600s
 ```
 
-**Verified on 2026-10-11:**
+**Verified on 2026-10-12:**
 
 ```text
-deployment.apps/keycloak unchanged
-service/keycloak unchanged
+deployment.apps/keycloak created
+service/keycloak created
+Waiting for deployment "keycloak" rollout to finish: 0 of 1 updated replicas are available...
 deployment "keycloak" successfully rolled out
 ```
 
@@ -2464,7 +2466,7 @@ echo "cluster:     $(kubectl run issuer-check -n default --rm -i --restart=Never
   wget -qO- http://keycloak.localhost:${KEYCLOAK_PORT}/realms/kagent/.well-known/openid-configuration < /dev/null | jq -r .issuer)"
 ```
 
-**Verified on 2026-10-11:**
+**Verified on 2026-10-12:**
 
 ```text
 workstation: http://keycloak.localhost:18080/realms/kagent
@@ -2496,14 +2498,14 @@ kubectl get deployment kagent-controller -n kagent -o jsonpath='{range .spec.tem
 forwards
 ```
 
-**Verified on 2026-10-11:**
+**Verified on 2026-10-12:**
 
 ```text
 secret/kagent-enterprise-oidc-secret created
 Release "kagent" has been upgraded. Happy Helming!
 NAME: kagent
 STATUS: deployed
-REVISION: 4
+REVISION: 5
 DESCRIPTION: Upgrade complete
 (Helm's release notes omitted)
 controller 
@@ -2526,7 +2528,47 @@ done
 The controller pod no longer has its `idp` container: the bundled login is gone. The upgrade rolled
 the controller, which is why `forwards` runs again.
 
-Scripts now need a Keycloak token. These helpers replace Step 9's: `kagent_token` uses the
+Scripts now need a Keycloak token, and the realm ships `kagent-cli`, the only client that issues one
+without a browser, disabled. Prove that, then enable it deliberately through Keycloak's admin API:
+
+```bash run id=keycloak-enable-kagent-cli
+KC="http://keycloak.localhost:${KEYCLOAK_PORT}"
+echo -n "token from kagent-cli while disabled: "
+curl -sS -X POST "${KC}/realms/kagent/protocol/openid-connect/token" -d grant_type=password -d client_id=kagent-cli \
+  -d username=writer --data-urlencode "password=${KAGENT_WRITER_PASSWORD}" | jq -r '.error // "issued"'
+ADMIN_TOKEN=$(curl -sS -X POST "${KC}/realms/master/protocol/openid-connect/token" -d grant_type=password \
+  -d client_id=admin-cli -d username=admin --data-urlencode "password=${KEYCLOAK_ADMIN_PASSWORD}" | jq -r .access_token)
+CLI_ID=$(curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/clients?clientId=kagent-cli" | jq -r '.[0].id')
+curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/clients/${CLI_ID}" | jq '.enabled = true' \
+  | curl -sS -o /dev/null -w 'enable kagent-cli: HTTP %{http_code}\n' -X PUT -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+      -H 'Content-Type: application/json' --data-binary @- "${KC}/admin/realms/kagent/clients/${CLI_ID}"
+echo -n "token from kagent-cli once enabled:  "
+curl -sS -X POST "${KC}/realms/kagent/protocol/openid-connect/token" -d grant_type=password -d client_id=kagent-cli \
+  -d username=writer --data-urlencode "password=${KAGENT_WRITER_PASSWORD}" | jq -r '.error // "issued"'
+```
+
+**Verified on 2026-10-12:**
+
+```text
+token from kagent-cli while disabled: invalid_client
+enable kagent-cli: HTTP 204
+token from kagent-cli once enabled:  issued
+```
+
+Disabling it is the same call with `enabled` set to `false`; Before production lists it. When you are
+done scripting against this cluster:
+
+```bash run id=keycloak-disable-kagent-cli when=manual
+KC="http://keycloak.localhost:${KEYCLOAK_PORT}"
+ADMIN_TOKEN=$(curl -sS -X POST "${KC}/realms/master/protocol/openid-connect/token" -d grant_type=password \
+  -d client_id=admin-cli -d username=admin --data-urlencode "password=${KEYCLOAK_ADMIN_PASSWORD}" | jq -r .access_token)
+CLI_ID=$(curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/clients?clientId=kagent-cli" | jq -r '.[0].id')
+curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/clients/${CLI_ID}" | jq '.enabled = false' \
+  | curl -sS -o /dev/null -w 'disable kagent-cli: HTTP %{http_code}\n' -X PUT -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+      -H 'Content-Type: application/json' --data-binary @- "${KC}/admin/realms/kagent/clients/${CLI_ID}"
+```
+
+These helpers replace Step 9's: `kagent_token` uses the
 `kagent-cli` client's password grant, as the user in `KAGENT_USER` (default `writer`), and
 `kagent_send` also prints a refused request's error, whether it comes back as JSON or as a bare
 HTTP status:
@@ -2557,7 +2599,7 @@ kagent_send() {
 ```
 
 > [!WARNING]
-> **`kagent-cli` is a lab convenience.** A public client with the password grant lets anything that knows a user's password get a token without a browser. Use it for scripts on a lab cluster only; in production, give scripts a confidential client with the client credentials grant, or tokens from your identity provider's own tooling.
+> **`kagent-cli` is a lab convenience.** A public client with the password grant lets anything that knows a user's password get a token without a browser. It ships disabled for that reason. Enable it for scripts on a lab cluster only, disable or delete it when you are done, and in production give scripts a confidential client with the client credentials grant, or tokens from your identity provider's own tooling.
 
 Prove the bundled login is gone and Keycloak tokens work:
 
@@ -2566,17 +2608,15 @@ echo -n "bundled login /autoauth/token: "; curl -sS -o /dev/null -w '%{http_code
   "http://127.0.0.1:${KAGENT_UI_PORT}/autoauth/token" -H 'Content-Type: application/json' -d '{"user_type":"admin"}'
 echo -n "API with no token:             "; curl -sS -o /dev/null -w '%{http_code}\n' -X POST \
   "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/assistant" -H 'Content-Type: application/json' -d '{}'
-echo -n "writer turn:                   "; kagent_send assistant "Reply with exactly: signed in"
+echo -n "writer turn:                   "; kagent_send assistant "Reply with exactly: keycloak token accepted"
 ```
 
-**Verified on 2026-10-11:**
+**Verified on 2026-10-12:**
 
 ```text
 bundled login /autoauth/token: 405
 API with no token:             401
-writer turn:                   TASK_STATE_COMPLETED	01a12de9-e905-7ca4-815f-ab9ce84f768c	I appreciate the request, but I need to clarify - you're asking me to respond with those exact words. Here's my response:
-
-signed in
+writer turn:                   TASK_STATE_COMPLETED	01a12df7-81f1-7d2b-be6c-75d3c832f8cf	keycloak token accepted
 ```
 
 **In the browser.** Open `http://localhost:14000` (or your `KAGENT_UI_PORT`). The UI redirects to
@@ -2598,11 +2638,11 @@ for user in admin writer reader norole; do
 done
 ```
 
-**Verified on 2026-10-11:**
+**Verified on 2026-10-12:**
 
 ```text
-admin   TASK_STATE_COMPLETED	01a12de9-f000-7cce-be9f-914902066de6	hello admin
-writer  TASK_STATE_COMPLETED	01a12de9-f343-7cef-9c6c-580eb3f6f048	hello writer
+admin   TASK_STATE_COMPLETED	01a12df7-84fb-7b86-bb1c-9713ce085f98	hello admin
+writer  TASK_STATE_COMPLETED	01a12df7-87d0-754a-8606-2a1f384c4d29	hello writer
 reader  REFUSED	permission denied
 norole  REFUSED	HTTP 401 Unauthorized
 ```
