@@ -77,6 +77,28 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "kagent-cli",
+      "name": "kagent scripts and CLI (public, password grant; lab only)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "Groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "Groups"
+          }
+        }
+      ]
     }
   ],
   "users": [

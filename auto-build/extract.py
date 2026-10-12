@@ -22,11 +22,28 @@ import sys
 CREDENTIALS = ["KAGENT_LICENSE_KEY", "AGENTGATEWAY_LICENSE_KEY", "ANTHROPIC_API_KEY"]
 
 # Shell state a block sets with `export` that later blocks read. Restored on --from.
-# Read from the gateway's Secret (Step 6), which exists before the kagent copy does (Step 8).
+# Each value is read back from where the guide stored it. The consumer key comes from the gateway's
+# Secret (Step 6), which exists before the kagent copy does (Step 8). A conversation ID is the oldest
+# actor of that agent's template.
 RESTORE = """\
+sec() { kubectl get secret "$2" -n "$1" -o jsonpath="{.data.$3}" 2>/dev/null | base64 --decode || true; }
 if kubectl get secret llm-virtual-keys -n agentgateway-system >/dev/null 2>&1; then
-  export AGENT_CONSUMER_KEY=$(kubectl get secret llm-virtual-keys -n agentgateway-system -o jsonpath='{.data.team-agents}' | base64 --decode | jq -r .key)
-fi"""
+  export AGENT_CONSUMER_KEY=$(sec agentgateway-system llm-virtual-keys team-agents | jq -r .key)
+fi
+oldest_conv() {
+  kubectl-ate get actors -a kagent -o json 2>/dev/null \\
+    | jq -r --arg t "$1-" '[.actors[]? | select(.actorTemplate.name // "" | test("^" + $t + "[0-9a-f]{12}$"))] | sort_by(.metadata.createTime) | .[0].metadata.name // empty' \\
+    | sed 's/^session-//'
+}
+export FIRST_CONTEXT=$(oldest_conv assistant)
+export CLAUDE_CONTEXT=$(oldest_conv assistant-claude-code)
+export MCP_SERVER_TOKEN=$(sec mcp-tools deployment-codes-token MCP_TOKEN)
+export KEYCLOAK_ADMIN_PASSWORD=$(sec keycloak keycloak-admin password)
+export KAGENT_OIDC_CLIENT_SECRET=$(sec keycloak keycloak-realm 'realm\\.json' | jq -r '.clients[]? | select(.clientId == "kagent-backend") | .secret' 2>/dev/null)
+for u in admin writer reader norole; do
+  v=$(sec keycloak keycloak-realm 'realm\\.json' | jq -r --arg u "$u" '.users[]? | select(.username == $u) | .credentials[0].value' 2>/dev/null)
+  if [ -n "$v" ]; then export "KAGENT_$(echo "$u" | tr '[:lower:]' '[:upper:]')_PASSWORD=$v"; fi
+done"""
 
 
 def blocks(path):
