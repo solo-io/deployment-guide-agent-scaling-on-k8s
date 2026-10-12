@@ -549,8 +549,10 @@ kubectl get secret actor-id-ca-pool -n ate-system -o jsonpath='{.data.tls\.crt}'
 ```
 
 Verified on this release by running the block and then the guide's Validate section, which passed:
-a new conversation, restored from a golden image taken before the rotation, worked end to end.
-Resuming a conversation suspended before the rotation was not tested.
+a new conversation, restored from a golden image taken before the rotation, worked end to end. A
+conversation suspended before the rotation also resumed after it with its context: its first turn
+set a fact, the rotation ran, and its next turn answered from that fact, on the same actor, with a
+128 ms restore and a 1.19 s round trip, and no errors in the router, ate-api or atelet logs.
 
 On a cluster without the beta certificates API (Attachment B), also republish the trust ConfigMaps
 from the new pools; that path was not tested.
@@ -692,3 +694,25 @@ kubectl port-forward --address 127.0.0.1 -n keycloak service/keycloak ${KEYCLOAK
 sleep 3
 curl -sS http://keycloak.localhost:${KEYCLOAK_PORT}/realms/kagent/.well-known/openid-configuration | jq -r .issuer
 ```
+
+**C.23 [D18] After a node restarts, every turn on it is refused with `input was not accepted; retry after
+the session becomes available`.** *Reproduced (a kind node stopped and started).* The actor is
+restored, and then atenet-router cannot reach it: its log shows `upstream call failed: Connect:
+deadline has elapsed`. Cause: the worker pods keep their names while their containers restart, and
+Substrate's registrations of them are from before the restart (their age in `kubectl-ate get
+workers` is older than the pods' restart); restarting the workers clears it (the mechanism is
+inferred). Fix: restart the worker pool and wait for every worker to register:
+
+```bash run id=c-restart-workers when=manual
+kubectl rollout restart deployment/kagent-default -n kagent
+kubectl rollout status deployment/kagent-default -n kagent --timeout=300s
+for i in $(seq 1 60); do
+  want=$(kubectl get pods -n kagent -o name | grep -c '/kagent-default-')
+  have=$(kubectl-ate get workers | awk 'NR > 1 && $4 != "0/0" {print $(NF-1)}' | while read -r pod; do
+    kubectl get pod -n kagent "${pod#kagent/}" >/dev/null 2>&1 && echo registered; done | grep -c registered || true)
+  [ "$have" -ge "$want" ] && break
+  sleep 5
+done
+kubectl-ate get workers
+```
+
