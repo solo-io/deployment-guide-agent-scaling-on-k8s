@@ -36,6 +36,9 @@ auto-build/run.sh                    # run every block
 auto-build/run.sh --from <block-id>  # resume at a block
 auto-build/run.sh --to <block-id>    # stop after a block
 auto-build/extract.py docs/deployment-guide-keycloak.md --list   # block IDs, in order
+
+auto-build/run.sh --attachment docs/attachments.md --to step-9-gateway-log   # Attachment B's path
+auto-build/run.sh --attachment docs/attachments.md --only c-pools-check,c-license-state
 ```
 
 It runs against whatever `KUBECONFIG` points at. Step 1 creates the cluster, so a full run expects
@@ -82,3 +85,23 @@ cheap to re-run or be added to `RESTORE` in `extract.py`.
 without reaching `>>>DONE`. The second check exists because a block that reads stdin can swallow the
 rest of a piped script and end the run with status 0; the script now runs from a file with stdin
 closed, and the check catches anything that ends a run early some other way.
+
+## Attachments
+
+`docs/attachments.md` holds two kinds of runnable block.
+
+**Replacements.** A block tagged `replaces=<id>` runs in place of the guide's block `<id>`, and one
+tagged `after=<id>` runs right after it. Attachment B is written this way: its blocks change Up and
+Running for a cluster without the beta certificates API without copying the rest of it. With
+`--attachment`, `--from` and `--to` work on the merged sequence, and `--list` shows each block's tag.
+
+**Standalone blocks.** Attachment A's check and Attachment C's fixes are untagged and `when=manual`,
+because each applies only in a particular situation. They run only when named with `--only`.
+
+## Running chosen blocks
+
+`--only <id>[,<id>...]` runs the environment block, the restore described under Resuming, every
+helper block, and then the named blocks in the order given, including `when=manual` ones. It is how
+Attachment C's fixes were run, and it works for any guide block too, for example `--only
+keycloak-forward`.
+

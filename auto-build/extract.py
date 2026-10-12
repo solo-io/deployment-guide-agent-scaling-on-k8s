@@ -2,8 +2,8 @@
 """Write the guide's runnable blocks out as one bash script, in document order.
 
 A runnable block is a fenced block whose info string is `bash run id=<id>`. Blocks
-marked `when=manual` are skipped. Each block is preceded by a marker line
-(`>>>BLOCK <id>`) so a log can be split per block.
+marked `when=manual` are skipped unless named with --only. Each block is preceded by
+a marker line (`>>>BLOCK <id>`) so a log can be split per block.
 
 The credentials are applied right after the environment setup block, from
 __CRED_<NAME> variables that run.sh exports, so the placeholders the guide sets
@@ -11,17 +11,25 @@ never reach a command.
 
   extract.py <guide.md> [--from <id>] [--to <id>]   script on stdout
   extract.py <guide.md> --list                      block ids, one per line
+  extract.py <guide.md> --attachment <file.md> ...  apply an attachment's blocks
+  extract.py <guide.md> [--attachment <f>] --only <id>[,<id>...]
 
 With --from, blocks before <id> are skipped except the environment block and any
 block whose id ends in -helper or -helpers (function definitions later blocks
 call), and values a reader's shell would still hold are restored from the cluster.
+
+With --attachment, an attachment block tagged `replaces=<id>` runs in place of the
+guide's block <id>, and one tagged `after=<id>` runs right after it. Untagged
+attachment blocks run only when named with --only.
+
+With --only, the script is the environment block, the restore, every helper block,
+and then the named blocks (manual ones included), in the order given.
 """
 import re
 import sys
 
 CREDENTIALS = ["KAGENT_LICENSE_KEY", "AGENTGATEWAY_LICENSE_KEY", "ANTHROPIC_API_KEY"]
 
-# Shell state a block sets with `export` that later blocks read. Restored on --from.
 # Each value is read back from where the guide stored it. The consumer key comes from the gateway's
 # Secret (Step 6), which exists before the kagent copy does (Step 8). A conversation ID is the oldest
 # actor of that agent's template.
@@ -48,7 +56,9 @@ for u in admin writer reader norole; do
 done"""
 
 
+
 def blocks(path):
+    """(id, info, body) for every runnable block in a markdown file."""
     lines = open(path).read().splitlines()
     out, i = [], 0
     while i < len(lines):
@@ -59,9 +69,22 @@ def blocks(path):
             while lines[i] != "```":
                 body.append(lines[i])
                 i += 1
-            out.append((m.group(1), "when=manual" in m.group(2), "\n".join(body)))
+            out.append((m.group(1), m.group(2), "\n".join(body)))
         i += 1
     return out
+
+
+def attr(info, name):
+    m = re.search(rf"\b{name}=(\S+)", info)
+    return m.group(1) if m else None
+
+
+def is_helper(bid):
+    return bid.endswith("-helper") or bid.endswith("-helpers")
+
+
+def arg(args, name):
+    return args[args.index(name) + 1] if name in args else None
 
 
 def main():
@@ -69,35 +92,70 @@ def main():
     if not args:
         sys.exit(__doc__)
     found = blocks(args[0])
-    ids = [b[0] for b in found]
+    attachment = arg(args, "--attachment")
+    extra = blocks(attachment) if attachment else []
+    for bid, info, _ in extra:
+        target = attr(info, "replaces") or attr(info, "after")
+        if target and target not in [b[0] for b in found]:
+            sys.exit(f"attachment block {bid} names {target}, which the guide does not have")
+    merged = []
+    for b in found:
+        rep = [e for e in extra if attr(e[1], "replaces") == b[0]]
+        merged.append(rep[0] if rep else b)
+        merged += [e for e in extra if attr(e[1], "after") == b[0]]
+    standalone = [e for e in extra if not attr(e[1], "replaces") and not attr(e[1], "after")]
+    ids = [b[0] for b in merged + standalone]
     if len(set(ids)) != len(ids):
         sys.exit("duplicate block ids: " + ", ".join(sorted({i for i in ids if ids.count(i) > 1})))
     if "--list" in args:
-        print("\n".join(f"{b[0]}{'  (manual)' if b[1] else ''}" for b in found))
+        for b in merged + standalone:
+            tags = (["when=manual"] if "when=manual" in b[1] else []) + [f"{k}={attr(b[1], k)}" for k in ("replaces", "after") if attr(b[1], k)]
+            print(b[0] + (f"  ({', '.join(tags)})" if tags else ""))
         return
-    frm = args[args.index("--from") + 1] if "--from" in args else None
-    to = args[args.index("--to") + 1] if "--to" in args else None
-    for want in (frm, to):
-        if want and want not in ids:
-            sys.exit(f"no block with id {want}")
-    start = ids.index(frm) if frm else 0
-    end = ids.index(to) if to else len(found) - 1
+
     script = ["set -eo pipefail"]
-    for n, (bid, manual, body) in enumerate(found):
-        if manual:
+
+    def emit(b):
+        script.extend([f"echo '>>>BLOCK {b[0]}'", b[2]])
+        if b[0] == "environment-setup-env":
+            script.extend(f'export {c}="$__CRED_{c}"' for c in CREDENTIALS)
+            script.append('export PATH="$ATE_BIN_DIR:$PATH"')
+
+    only = arg(args, "--only")
+    if only:
+        want = only.split(",")
+        index = {b[0]: b for b in merged + standalone}
+        missing = [w for w in want if w not in index]
+        if missing:
+            sys.exit("no block with id " + ", ".join(missing))
+        emit(index["environment-setup-env"])
+        script.append(RESTORE)
+        for b in merged:
+            if is_helper(b[0]) and b[0] not in want:
+                emit(b)
+        for w in want:
+            emit(index[w])
+        script.append("echo '>>>DONE'")
+        print("\n".join(script))
+        return
+
+    frm, to = arg(args, "--from"), arg(args, "--to")
+    mids = [b[0] for b in merged]
+    for want in (frm, to):
+        if want and want not in mids:
+            sys.exit(f"no block with id {want}")
+    start = mids.index(frm) if frm else 0
+    end = mids.index(to) if to else len(merged) - 1
+    for n, b in enumerate(merged):
+        if "when=manual" in b[1]:
             continue
-        is_env = bid == "environment-setup-env"
-        is_helper = bid.endswith("-helper") or bid.endswith("-helpers")
         if n > end:
             break
-        if n < start and not (is_env or is_helper):
+        if n < start and not (b[0] == "environment-setup-env" or is_helper(b[0])):
             continue
-        script += [f"echo '>>>BLOCK {bid}'", body]
-        if is_env:
-            script += [f'export {c}="$__CRED_{c}"' for c in CREDENTIALS]
-            script.append('export PATH="$ATE_BIN_DIR:$PATH"')
-            if frm:
-                script.append(RESTORE)
+        emit(b)
+        if b[0] == "environment-setup-env" and frm:
+            script.append(RESTORE)
     script.append("echo '>>>DONE'")
     print("\n".join(script))
 

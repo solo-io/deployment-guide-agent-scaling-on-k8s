@@ -3002,7 +3002,7 @@ MCP server, the fences, and another user's access.
 **What you will have that you did not have before:** one pass that tells you whether the whole
 platform still does what each step said it would, and which step to go back to when it does not.
 
-**Verified on:** kind cluster `agents`, continuing from Scale, 2026-10-12 02:49 UTC. Every `run` block in this section was executed verbatim, in document order, with `auto-build/run.sh --from step-30-helpers`. One model call; 16 checks, 0 failed.
+**Verified on:** kind cluster `agents`, 2026-10-12 03:16 UTC, after Scale, after every Attachment C fix command had been run on the cluster, and directly after a CA pool rotation (Attachment C.10). Every `run` block in this section was executed verbatim, in document order, with `auto-build/run.sh --from step-30-helpers`. One model call; 16 checks, 0 failed.
 
 ### Step 30: Drive one conversation through every control
 
@@ -3021,9 +3021,12 @@ record() {
 }
 ```
 
-**Who is calling.** Keycloak issues the token, and the controller refuses a call without one:
+**Who is calling.** The forwards come up first, because anything that restarted the controller since
+you last used them has taken them down. Keycloak issues the token, and the controller refuses a call
+without one:
 
 ```bash run id=step-30-identity
+forwards >/dev/null
 VALIDATE_RESULTS=""
 TOKEN=$(kagent_token)
 record "Step 23" "Keycloak token for writer" "$([ -n "$TOKEN" ] && [ "$TOKEN" != null ] && echo issued || echo none)" '^issued$'
@@ -3052,7 +3055,7 @@ record "Step 11" "Actor state after the turn" "$(kubectl-ate get actor "session-
 **Verified on 2026-10-12:**
 
 ```text
-PASS  Steps 8, 20   Turn using the model and the MCP tool: TASK_STATE_COMPLETED The deployment code for the billing service is **K7-teal-otter-0429**. 
+PASS  Steps 8, 20   Turn using the model and the MCP tool: TASK_STATE_COMPLETED The deployment code for the **billing** service is: **K7-teal-otter-0429** 
 PASS  Steps 10, 11  First restore of the conversation's actor: Restore timing breakdown golden/full
 PASS  Step 11       Actor state after the turn: ACTOR_STATE_SUSPENDED
 ```
