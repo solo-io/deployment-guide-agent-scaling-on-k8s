@@ -8,6 +8,7 @@ that fails is a guide problem, and the fix goes in `docs/`, not here.
 |---|---|
 | `extract.py` | Writes the guide's runnable blocks out as one bash script, or lists their IDs |
 | `run.sh` | Applies your credentials, runs that script against the current cluster, logs each block |
+| `demo-ui.sh` | Brings the UI back up on a cluster the guide built, for a demo |
 
 ## Credentials
 
@@ -27,6 +28,14 @@ X
 `run.sh` refuses to start if any is unset or still the guide's `<...>` placeholder. They are applied
 immediately after the environment block, so versions and settings come from the guide and only the
 secrets come from you. No block prints them.
+
+## UI passwords
+
+Step 23 creates three users to sign in to the UI as: `admin`, `writer` and `reader`. `run.sh` points
+the guide at `auto-build/.env.local` for their passwords (`KAGENT_UI_CREDENTIALS_FILE`): if
+`KAGENT_ADMIN_PASSWORD`, `KAGENT_WRITER_PASSWORD` or `KAGENT_READER_PASSWORD` is already set,
+there or in your environment, it is used; otherwise the guide generates it and appends it to that
+file, mode 0600. No block prints them, and a rebuilt cluster gets the same ones.
 
 ## Usage
 
@@ -105,3 +114,15 @@ helper block, and then the named blocks in the order given, including `when=manu
 Attachment C's fixes were run, and it works for any guide block too, for example `--only
 keycloak-forward`.
 
+## Opening the UI for a demo
+
+```bash
+auto-build/demo-ui.sh
+```
+
+Against the cluster `KUBECONFIG` points at, after the guide has run: restarts the worker pool if its
+containers restarted in place (a node restart; the guide's Attachment C.23), forwards the UI to
+127.0.0.1:14000 and Keycloak to 127.0.0.1:18080 unless something already answers there, checks both
+answer, and prints the UI's URL, the three users and the path of the file holding their passwords.
+`KAGENT_UI_PORT`, `KEYCLOAK_PORT` and `KAGENT_UI_CREDENTIALS_FILE` change the defaults; the
+Keycloak port must be the one the cluster was built with, because it is part of the issuer URL.

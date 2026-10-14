@@ -604,7 +604,7 @@ kubectl-ate get actors -A >/dev/null && echo "kubectl-ate: authenticated"
 ```
 
 **C.3 The kagent controller restarts once during install with `unable to configure the enterprise
-extensions`.** *Reproduced (two installs in three).* Its log, `kubectl logs ... --previous`, shows ten
+extensions`.** *Reproduced (three installs in four).* Its log, `kubectl logs ... --previous`, shows ten
 attempts to reach the bundled login at `http://localhost:5556`, then `connection refused`. Cause: the
 controller waits 20 seconds for its bundled login container to answer, and exits if it has not.
 Fix: none; it recovers. Confirm it has:

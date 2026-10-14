@@ -14,6 +14,9 @@ GUIDE="$HERE/../docs/deployment-guide-keycloak.md"
 CREDS="KAGENT_LICENSE_KEY AGENTGATEWAY_LICENSE_KEY ANTHROPIC_API_KEY"
 
 if [ -f "$HERE/.env.local" ]; then set -a; . "$HERE/.env.local"; set +a; fi
+# Step 23 saves the UI users' generated passwords here, and reuses any already set, so a rebuilt
+# cluster keeps the same sign-in.
+export KAGENT_UI_CREDENTIALS_FILE="$HERE/.env.local"
 for c in $CREDS; do
   v="${!c:-}"
   if [ -z "$v" ] || [ "${v#<}" != "$v" ]; then
