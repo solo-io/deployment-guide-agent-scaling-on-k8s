@@ -115,8 +115,14 @@ groups with `enterprise.rbac.roleMappings`. Only Keycloak was verified with this
 The guide's main path runs on a cluster where `certificates.k8s.io/v1beta1` and the
 `ClusterTrustBundle`, `ClusterTrustBundleProjection` and `PodCertificateRequest` feature gates are
 on. Substrate also has a compatibility mode for clusters where they are not: an issuer called
-`ate-ca` replaces the native certificate APIs, and a sidecar in each Substrate, worker and controller
-pod fetches and renews certificates from it.
+`ate-ca`, run by the pod certificate controller, replaces the native certificate APIs, and a sidecar
+in each Substrate, worker and controller pod fetches and renews certificates from it.
+
+**PostgreSQL logs in by password here, not by certificate.** The kagent chart mounts the controller's
+database certificate only through a Pod Certificate projection, which this cluster cannot serve, so
+Step 4's certificate-only database cannot be used. B.4 runs the same database with password logins
+over TLS. The passwords are generated in your shell and stored only in the connection Secrets, and
+the clients encrypt but do not verify the server's certificate (`sslmode=require`).
 
 **What this attachment claims, and what it does not.** It was verified on kind 1.35.0 with the beta
 API and the gates off. It says nothing about any managed Kubernetes service: admission, networking,
@@ -125,10 +131,12 @@ node images and identity all differ there, and none of that was tested.
 Follow Up and Running with the blocks below in place of the ones they name. Everything else in Up
 and Running is unchanged.
 
-**Verified on:** a throwaway kind cluster `compat` (kind 0.32.0, `kindest/node:v1.35.0`), beside two
-other clusters on the same Docker host, 2026-10-12 03:18 UTC. Up and Running was run verbatim through
-Step 9 with these blocks substituted (`auto-build/run.sh --attachment docs/attachments.md --to
-step-9-gateway-log`), on the guide's versions. B.3 was re-run on its own after a one-line change.
+**Verified on:** a throwaway kind cluster `compat10` (kind 0.32.0, `kindest/node:v1.35.0`), beside
+one other cluster on the same Docker host, 2026-10-14 16:09 to 16:20 UTC. Up and Running was run
+verbatim through Step 9 with these blocks substituted (`auto-build/run.sh --attachment
+docs/attachments.md --to step-9-gateway-log`), on the guide's versions; the run stopped at
+`step-9-egress-policy`, which B.8 replaces, and B.8 and the gateway log check were run after it was
+written.
 
 > [!NOTE]
 > **Running this beside another kind cluster** on the same Docker host can leave the new cluster's `kube-proxy` crashing with `too many open files`, and every pod then times out reaching the API server. On Colima, raise the inotify limit first. It resets when the VM restarts.
@@ -170,34 +178,12 @@ kubernetes_feature_enabled{name="PodCertificateRequest",stage="BETA"} 0
 
 Only `certificatesigningrequests` at `v1`, and all three gates at 0.
 
-### B.2 Substrate (in place of `helm-substrate`)
-
-`usePodCertificateAPI: false` selects the compatibility issuer:
-
-```bash run id=b-helm-substrate replaces=helm-substrate
-helm upgrade -i substrate \
-  oci://us-docker.pkg.dev/solo-public/enterprise-substrate-helm/substrate \
-  --version ${SUBSTRATE_VERSION} \
-  --namespace ate-system \
-  -f - <<EOF
-global:
-  licensing:
-    createSecret: false
-    secretName: enterprise-agentgateway-license
-usePodCertificateAPI: false
-credentialProvider:
-  namespacePolicies:
-    - atespace: kagent
-      allowedNamespaces: [kagent]
-EOF
-```
-
-### B.3 The issuer's certificate and the trust ConfigMaps (after `substrate-ate-api-authentication`)
+### B.2 The issuer's certificate and the trust ConfigMaps (after `substrate-ate-api-authentication`)
 
 The compatibility issuer needs a TLS certificate for its own Service, and every consumer needs the
 public roots it trusts, as ConfigMaps in its own namespace: Kubernetes cannot mount a ConfigMap from
 another namespace. Create the issuer's certificate from a private CA whose key never leaves a
-temporary directory, and copy the public roots of the two CA pools from Step 4:
+temporary directory, and copy the public roots of the two CA pools from Step 3:
 
 ```bash run id=b-ate-ca-trust after=substrate-ate-api-authentication
 WORK=$(mktemp -d)
@@ -225,7 +211,7 @@ openssl x509 -in "$WORK/tls.crt" -noout -subject -enddate
 rm -rf "$WORK"
 ```
 
-**Verified on 2026-10-12:**
+**Verified on 2026-10-14:**
 
 ```text
 secret/ate-ca-server-tls created
@@ -239,7 +225,7 @@ configmap/ate-ca-server-ca created
 configmap/ate-ca-podidentity-trust created
 configmap/ate-ca-servicedns-trust created
 subject=CN=ate-ca.podcertificate-controller-system.svc
-notAfter=Oct 12 03:25:41 2027 GMT
+notAfter=Oct 14 16:09:13 2027 GMT
 ```
 
 These ConfigMaps are not kept in step by anything. When you rotate the CA pools, publish the old and
@@ -247,58 +233,263 @@ new roots together in every consumer namespace, restart the consumers, and remov
 after every certificate issued from them has been replaced. The issuer certificate expires in a year
 here; renew it the same way.
 
-### B.4 Waiting for Substrate (in place of `step-4-substrate-ready`)
+### B.3 The pod certificate controller (in place of `helm-substrate-podcert`)
 
-```bash run id=b-substrate-ready replaces=step-4-substrate-ready
+`ateCa.enabled` runs the compatibility issuer beside the controller. No PostgreSQL clients are
+mapped, because no client logs in by certificate here:
+
+```bash run id=b-helm-substrate-podcert replaces=helm-substrate-podcert
+helm upgrade -i substrate-podcert \
+  oci://us-docker.pkg.dev/solo-public/enterprise-substrate-helm/substrate-podcert \
+  --version ${SUBSTRATE_VERSION} \
+  --namespace podcertificate-controller-system \
+  --set ateCa.enabled=true
+kubectl rollout status deployment -n podcertificate-controller-system --timeout=300s
+kubectl get pods -n podcertificate-controller-system
+```
+
+**Verified on 2026-10-14:**
+
+```text
+Release "substrate-podcert" does not exist. Installing it now.
+NAME: substrate-podcert
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+Waiting for deployment "podcertificate-controller" rollout to finish: 0 of 1 updated replicas are available...
+deployment "podcertificate-controller" successfully rolled out
+NAME                                         READY   STATUS    RESTARTS   AGE
+podcertificate-controller-6c7d64cb84-dvxqx   1/1     Running   0          16s
+```
+
+### B.4 PostgreSQL with password logins (in place of `postgres-install` and `step-4-postgres-check`)
+
+The same image, roles and schemas as Step 4. The server certificate is self-signed in a temporary
+directory, and only its Secret is kept. `pg_hba.conf` refuses `postgres` over the network and admits
+the three product users only over TLS, by password:
+
+```bash run id=b-postgres-install replaces=postgres-install
+PG_SETUP=$(mktemp -d)
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 365 \
+  -subj "/CN=kagent-postgresql.kagent.svc" -addext "subjectAltName=DNS:kagent-postgresql.kagent.svc" \
+  -keyout "$PG_SETUP/tls.key" -out "$PG_SETUP/tls.crt" 2>/dev/null
+kubectl create secret tls kagent-postgresql-tls -n kagent --cert="$PG_SETUP/tls.crt" --key="$PG_SETUP/tls.key"
+kubectl apply -f- <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kagent-postgresql
+  namespace: kagent
+data:
+  postgresql.conf: |
+    listen_addresses = '*'
+    ssl = on
+    ssl_cert_file = '/run/postgresql-tls/tls.crt'
+    ssl_key_file = '/run/postgresql-tls/tls.key'
+    password_encryption = scram-sha-256
+    hba_file = '/etc/postgresql/pg_hba.conf'
+  pg_hba.conf: |
+    local all all trust
+    hostssl all postgres all reject
+    hostssl kagent kagent_user,substrate_owner_user,substrate_readwrite_user all scram-sha-256
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kagent-postgresql
+  namespace: kagent
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 500Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kagent-postgresql
+  namespace: kagent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app.kubernetes.io/name: kagent, app.kubernetes.io/component: database}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: kagent, app.kubernetes.io/component: database}
+    spec:
+      securityContext:
+        fsGroup: 70
+      containers:
+      - name: postgresql
+        image: ${POSTGRES_IMAGE}
+        env:
+        - {name: POSTGRES_DB, value: kagent}
+        - {name: POSTGRES_USER, value: postgres}
+        - {name: POSTGRES_HOST_AUTH_METHOD, value: trust}
+        - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+        args: ["-c", "config_file=/etc/postgresql/postgresql.conf"]
+        ports:
+        - {name: postgresql, containerPort: 5432}
+        readinessProbe:
+          exec:
+            command: [sh, -c, 'pg_isready -U postgres -d kagent']
+          periodSeconds: 5
+        volumeMounts:
+        - {name: data, mountPath: /var/lib/postgresql/data}
+        - {name: config, mountPath: /etc/postgresql}
+        - {name: tls, mountPath: /run/postgresql-tls, readOnly: true}
+      volumes:
+      - name: data
+        persistentVolumeClaim: {claimName: kagent-postgresql}
+      - name: config
+        configMap: {name: kagent-postgresql}
+      - name: tls
+        secret: {secretName: kagent-postgresql-tls, defaultMode: 0640}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kagent-postgresql
+  namespace: kagent
+spec:
+  selector: {app.kubernetes.io/name: kagent, app.kubernetes.io/component: database}
+  ports:
+  - {name: postgresql, port: 5432, targetPort: postgresql}
+EOF
+kubectl rollout status deployment/kagent-postgresql -n kagent --timeout=300s
+KAGENT_SRC=https://raw.githubusercontent.com/kagent-dev/kagent/v1.0.0-alpha13/go/core/cli/internal/commands
+SUBSTRATE_SRC=https://raw.githubusercontent.com/kagent-dev/substrate/v0.5.0-alpha2/pkg/postgressetup
+curl -sSLf -o "$PG_SETUP/kagent.sql" "$KAGENT_SRC/bundled_postgres.sql"
+curl -sSLf -o "$PG_SETUP/substrate.sql" "$SUBSTRATE_SRC/setup.sql"
+( cd "$PG_SETUP" && shasum -a 256 -c - ) <<EOF
+7ce064fd4e5f5f55a470e86f45db979247bacd887a09d881112051a9695f46be  kagent.sql
+137264dea1a39db1a0692da8c24bd49d5272dae6123bab3cec1d667fdb8ee37e  substrate.sql
+EOF
+PW_KAGENT=$(openssl rand -hex 24); PW_OWNER=$(openssl rand -hex 24); PW_RW=$(openssl rand -hex 24)
+{ echo "BEGIN;"
+  echo "\\set substrate_owner_password '${PW_OWNER}'"
+  echo "\\set substrate_readwrite_password '${PW_RW}'"
+  cat "$PG_SETUP/kagent.sql" "$PG_SETUP/substrate.sql"
+  echo "ALTER ROLE kagent_user PASSWORD '${PW_KAGENT}';"
+  echo "CREATE SCHEMA IF NOT EXISTS enterprise AUTHORIZATION kagent_owner;"
+  echo "REVOKE ALL ON SCHEMA enterprise FROM PUBLIC;"
+  echo "COMMIT;"
+} | kubectl exec -i -n kagent deployment/kagent-postgresql -c postgresql -- \
+    psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet -U postgres -d kagent \
+      --set=substrate_schema=substrate \
+      --set=substrate_owner_role=substrate_owner --set=substrate_owner_user=substrate_owner_user \
+      --set=substrate_readwrite_role=substrate_readwrite --set=substrate_readwrite_user=substrate_readwrite_user
+DB=kagent-postgresql.kagent.svc:5432/kagent?sslmode=require
+printf 'postgresql://kagent_user:%s@%s' "$PW_KAGENT" "$DB" \
+  | kubectl create secret generic kagent-postgres -n kagent --from-file=connectionString=/dev/stdin
+printf 'postgresql://substrate_owner_user:%s@%s' "$PW_OWNER" "$DB" \
+  | kubectl create secret generic substrate-postgres-owner -n ate-system --from-file=ownerConnectionString=/dev/stdin
+printf 'postgresql://substrate_readwrite_user:%s@%s' "$PW_RW" "$DB" \
+  | kubectl create secret generic substrate-postgres-readwrite -n ate-system --from-file=readWriteConnectionString=/dev/stdin
+unset PW_KAGENT PW_OWNER PW_RW
+rm -rf "$PG_SETUP"
+```
+
+**Verified on 2026-10-14:**
+
+```text
+secret/kagent-postgresql-tls created
+configmap/kagent-postgresql created
+persistentvolumeclaim/kagent-postgresql created
+deployment.apps/kagent-postgresql created
+service/kagent-postgresql created
+Waiting for deployment "kagent-postgresql" rollout to finish: 0 of 1 updated replicas are available...
+deployment "kagent-postgresql" successfully rolled out
+kagent.sql: OK
+substrate.sql: OK
+secret/kagent-postgres created
+secret/substrate-postgres-owner created
+secret/substrate-postgres-readwrite created
+```
+
+The passwords go into psql over stdin and into the Secrets over stdin, so they appear in no command
+line. Anyone who can read those three Secrets can log in as that user.
+
+```bash run id=b-postgres-check replaces=step-4-postgres-check
+kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U postgres -d kagent -At -c \
+  "select nspname || ' owned by ' || pg_get_userbyid(nspowner) from pg_namespace where nspname in ('kagent','substrate','enterprise') order by 1"
+kubectl get configmap kagent-postgresql -n kagent -o jsonpath='{.data.pg_hba\.conf}'
+```
+
+**Verified on 2026-10-14:**
+
+```text
+enterprise owned by kagent_owner
+kagent owned by kagent_owner
+substrate owned by substrate_owner
+local all all trust
+hostssl all postgres all reject
+hostssl kagent kagent_user,substrate_owner_user,substrate_readwrite_user all scram-sha-256
+```
+
+### B.5 Substrate (in place of `helm-substrate`)
+
+`usePodCertificateAPI: false` selects the compatibility issuer. `postgres.clientCertificates` stays
+off, because ate-api logs in with the password in its connection Secrets:
+
+```bash run id=b-helm-substrate replaces=helm-substrate
+helm upgrade -i substrate \
+  oci://us-docker.pkg.dev/solo-public/enterprise-substrate-helm/substrate \
+  --version ${SUBSTRATE_VERSION} \
+  --namespace ate-system \
+  -f - <<EOF
+global:
+  licensing:
+    createSecret: false
+    secretName: enterprise-agentgateway-license
+usePodCertificateAPI: false
+rustfs:
+  storageSize: ${SNAPSHOT_STORE_SIZE}
+credentialProvider:
+  namespacePolicies:
+    - atespace: kagent
+      allowedNamespaces: [kagent]
+EOF
+```
+
+### B.6 Waiting for Substrate (in place of `substrate-ready`)
+
+```bash run id=b-substrate-ready replaces=substrate-ready
 kubectl wait --for=condition=Available deployment --all -n ate-system --timeout=600s
-kubectl wait --for=condition=Available deployment --all -n podcertificate-controller-system --timeout=300s
 kubectl rollout status daemonset/atelet -n ate-system --timeout=300s
 kubectl get pods -n ate-system
-kubectl logs -n podcertificate-controller-system deployment/podcertificate-controller | grep -m1 'not served'
+kubectl logs -n podcertificate-controller-system deployment/podcertificate-controller --all-containers | grep -m1 'not served'
 echo "-- kubectl-ate:"
 kubectl-ate get actors -A 2>&1 | tail -1 || true
 ```
 
-**Verified on 2026-10-12:**
+**Verified on 2026-10-14:**
 
 ```text
-deployment.apps/ate-api-server condition met
-deployment.apps/ate-controller condition met
-deployment.apps/atenet-egress condition met
-deployment.apps/atenet-router condition met
-deployment.apps/k8s-credential-provider condition met
-deployment.apps/rustfs condition met
-deployment.apps/podcertificate-controller condition met
-daemon set "atelet" successfully rolled out
-NAME                                      READY   STATUS      RESTARTS   AGE
-ate-api-server-7c54b79d6-82cc7            2/2     Running     0          3m36s
-ate-api-server-7c54b79d6-s768r            2/2     Running     0          3m36s
-ate-controller-5466699654-qvdhs           2/2     Running     0          3m36s
-atelet-nht6h                              2/2     Running     0          3m25s
-atenet-egress-759ffcccf4-df5cz            3/3     Running     0          3m36s
-atenet-router-578479df46-4c8lj            3/3     Running     0          3m36s
-k8s-credential-provider-cb9cfb4ff-mzwdg   2/2     Running     0          3m36s
-postgres-0                                3/3     Running     0          3m36s
-rustfs-56cdbc9dcb-qwwcc                   1/1     Running     0          3m36s
-rustfs-bucket-init-xz4c2                  0/1     Completed   0          3m36s
-{"time":"2026-10-12T03:20:57.754982995Z","level":"WARN","msg":"certificates.k8s.io ClusterTrustBundle API is not served; PodCertificateRequest signers disabled, publishing EnterpriseSubstrateClusterTrustBundles"}
--- kubectl-ate:
-Error: failed to connect to ate-api-server: failed to discover ClusterTrustBundle API: neither v1 nor v1beta1 ClusterTrustBundle is served
+Release "substrate" does not exist. Installing it now.
+NAME: substrate
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+(Helm's release notes omitted)
 ```
 
 The pod certificate controller found no ClusterTrustBundle API, disabled its native signers, and
 publishes `EnterpriseSubstrateClusterTrustBundles` instead. Substrate runs.
 
 **kubectl-ate does not.** On this release every kubectl-ate command first looks for the
-ClusterTrustBundle API and fails without it, `--endpoint` included, and it has no option to supply
-the trust another way. In this mode you have no CLI to list, inspect, resume or suspend actors: every
-kubectl-ate step in the guide (Steps 9 to 30) fails with the error above. Agents are unaffected,
-because the kagent controller does not use kubectl-ate.
+ClusterTrustBundle API and fails without it, and it has no option to supply the trust another way.
+In this mode you have no CLI to list, inspect, resume or suspend actors: every kubectl-ate step in
+the guide (Steps 9 to 30) fails with the error above. Agents are unaffected, because the kagent
+controller does not use kubectl-ate.
 
-### B.5 kagent (in place of `helm-kagent`)
+### B.7 kagent (in place of `helm-kagent`)
 
 The controller takes its Substrate client certificate from `ate-ca` too, through an `ate-ca-agent`
-sidecar from the same Substrate release:
+sidecar from the same Substrate release, and its database password from the `kagent-postgres` Secret
+B.4 created:
 
 ```bash run id=b-helm-kagent replaces=helm-kagent
 helm upgrade -i kagent \
@@ -314,15 +505,13 @@ enterprise:
     createSecret: false
   substrate:
     usePodCertificateAPI: false
-    ateCAAgentImage: us-docker.pkg.dev/solo-public/substrate-enterprise/atecaagent:${WORKER_IMAGE##*:}
+    ateCAAgentImage: us-docker.pkg.dev/solo-public/substrate-enterprise/atecaagent:v${SUBSTRATE_VERSION}@sha256:1d25cf59cd8d0828dfe66c863481d921278fb1af47a60b60f674c6dfe5a8ee65
 kmcp:
   licensing:
     createSecret: false
 controller:
   substrate:
     enabled: true
-    ateApiEndpoint: "dns:///api.ate-system.svc:443"
-    atenetRouterURL: "http://atenet-router.ate-system.svc:80"
 substrateWorkerPool:
   create: true
   name: kagent-default
@@ -334,7 +523,7 @@ kubectl get deployment kagent-controller -n kagent -o jsonpath='{range .spec.tem
 kubectl get workerpool -n kagent
 ```
 
-**Verified on 2026-10-12:**
+**Verified on 2026-10-14:**
 
 ```text
 Release "kagent" does not exist. Installing it now.
@@ -345,13 +534,12 @@ DESCRIPTION: Install complete
 (Helm's release notes omitted)
 ate-ca-agent controller idp 
 NAME             DESIRED   REPLICAS   READY   AGE
-kagent-default   2         2          2       105s
+kagent-default   2         2          2       61s
 ```
 
-`ateCAAgentImage` takes the sidecar's tag from `WORKER_IMAGE`, so the two stay on the same Substrate
-release.
+The sidecar image is pinned by digest to the same Substrate release as `WORKER_IMAGE`.
 
-### B.6 Checking the first turn (in place of `step-9-egress-policy`)
+### B.8 Checking the first turn (in place of `step-9-egress-policy`)
 
 Steps 6 to 9 are unchanged and the first turn works. Step 9's egress policy check uses kubectl-ate,
 so it cannot run here; the gateway's log, the next block in Step 9, proves the call went through the
@@ -361,7 +549,7 @@ enterprise gateway either way.
 kubectl-ate get egress-policy "session-${FIRST_CONTEXT}" --atespace kagent 2>&1 | tail -1 || true
 ```
 
-**Verified on 2026-10-12:**
+**Verified on 2026-10-14:**
 
 ```text
 Error: failed to connect to ate-api-server: failed to discover ClusterTrustBundle API: neither v1 nor v1beta1 ClusterTrustBundle is served
@@ -374,19 +562,21 @@ again on purpose, or met while verifying this guide; **observed during discovery
 while building this guide and not reproduced since. Entries marked **[Dn]** exist because of an open
 product defect and go away when it is fixed.
 
-The fix commands are written to be run as they are, in your guide shell. Each was run on the guide's
-`agents` cluster on 2026-10-12 (`auto-build/run.sh --attachment docs/attachments.md --only ...`),
-after Validate had passed there.
+The fix commands are written to be run as they are, in your guide shell. Each was run on the
+verification cluster `guide10` on 2026-10-14 (`auto-build/run.sh --attachment docs/attachments.md
+--only ...`), after Validate had passed there; C.23's on cluster `alpha10` after its node was
+restarted.
 
 ### Install
 
-**C.1 Substrate pods sit in `ContainerCreating`.** *Observed during discovery.*
-Cause: the CA and JWT pools do not exist yet; Substrate mounts certificates issued from them and never
-creates them. Fix: check which exist, then run Step 4's `substrate-pools` block, which skips those
-that do.
+**C.1 PostgreSQL or Substrate pods sit in `ContainerCreating`.** *Observed during discovery.*
+Cause: the CA and JWT pools do not exist yet; PostgreSQL and Substrate mount certificates issued from
+them, and nothing but Step 3 creates them. Fix: check which exist, then run Step 3's
+`substrate-pools` block, which skips those that do.
 
 ```bash run id=c-pools-check when=manual
 for s in podcertificate-controller-system/service-dns-ca-pool podcertificate-controller-system/pod-identity-ca-pool \
+         podcertificate-controller-system/postgres-ca-pool \
          ate-system/actor-id-jwt-pool ate-system/actor-id-ca-pool ate-system/egress-mitm-ca-pool; do
   kubectl get secret "${s#*/}" -n "${s%%/*}" >/dev/null 2>&1 && echo "present: $s" || echo "MISSING: $s"
 done
@@ -413,9 +603,11 @@ kubectl rollout status deployment/ate-api-server -n ate-system --timeout=180s
 kubectl-ate get actors -A >/dev/null && echo "kubectl-ate: authenticated"
 ```
 
-**C.3 The kagent controller restarts during install with `failed to connect to user=kagent
-database=kagent`.** *Reproduced (every install).* Cause: the controller starts before its Postgres
-accepts connections. Fix: none; it recovers. Confirm it has:
+**C.3 The kagent controller restarts once during install with `unable to configure the enterprise
+extensions`.** *Reproduced (two installs in three).* Its log, `kubectl logs ... --previous`, shows ten
+attempts to reach the bundled login at `http://localhost:5556`, then `connection refused`. Cause: the
+controller waits 20 seconds for its bundled login container to answer, and exits if it has not.
+Fix: none; it recovers. Confirm it has:
 
 ```bash run id=c-controller-settled when=manual
 kubectl rollout status deployment/kagent-controller -n kagent --timeout=180s
@@ -437,7 +629,7 @@ this guide that use it end with `< /dev/null`; keep it if you adapt them.
 ### Agents and Substrate
 
 **C.6 [D10] Agent `Ready=False`, `GoldenActorCrashed: golden actor crashed before its snapshot was
-taken`.** *Observed during discovery.* Cause: the bucket in the Harness's
+taken`.** *Reproduced (a Harness naming `s3://no-such-bucket/`).* Cause: the bucket in the Harness's
 `snapshotPolicy.location` does not exist; only atelet's log says so. Fix: find the storage error,
 then point the Harness at the bucket the store has (`ate-snapshots` with the bundled store):
 
@@ -446,7 +638,7 @@ kubectl logs -n ate-system daemonset/atelet --since=1h | grep -m3 -E 'NoSuchBuck
 kubectl patch harness kagent-adk -n kagent --type merge -p '{"spec":{"substrate":{"snapshotPolicy":{"location":"gs://ate-snapshots/kagent/"}}}}'
 ```
 
-**C.7 [D11] atelet logs snapshot uploads "to GCS" on an S3 store.** *Observed during discovery.*
+**C.7 [D11] atelet logs snapshot uploads "to GCS" on an S3 store.** *Reproduced (with C.6).*
 Cause: a label in atelet's messages; the `gs://` and `s3://` schemes are handled the same way, and
 the bundled store is S3. Fix: none. Check which backend atelet uses:
 
@@ -479,21 +671,24 @@ kubectl get events -n kagent --field-selector reason=FailedScheduling --sort-by=
 kubectl get workerpool -n kagent
 ```
 
-**C.10 Nothing that Substrate issued validates, a year after Step 4.** *Not observed: follows from the
+**C.10 Nothing that Substrate issued validates, a year after Step 3.** *Not observed: follows from the
 pools' one-year validity.* Cause: the CA pools expired, and nothing rotates them. Fix: replace the
 pools and every root derived from them, then restart everything that holds a certificate. This
-rotates every trust root, so expect every Substrate component, worker and the kagent controller to
-restart. Substrate's Postgres goes first: it speaks mutual TLS with a certificate from the service-DNS
-pool, and ate-api will not start against a Postgres still presenting a certificate from the old pool.
+rotates every trust root, so expect PostgreSQL, every Substrate component, the workers and the
+kagent controller to restart, in that order.
+
 Nothing may restart before the pod certificate controller has published the new roots: every
-component reads its trust bundle once, at start, and one that starts early keeps the old roots (on
-this release, atenet-router then fails every resume with `invalid peer certificate: UnknownIssuer`,
-and kagent refuses new turns with `input was not accepted; retry after the session becomes
-available`). Wait on each rollout, not on availability: the old pods keep a Deployment available, so
-an availability wait passes while the new pods are failing:
+component reads its trust bundle once, at start, and one that starts early keeps the old roots
+(atenet-router then fails every resume with `invalid peer certificate: UnknownIssuer`, and kagent
+refuses new turns with `input was not accepted; retry after the session becomes available`).
+PostgreSQL goes next: it presents a service-DNS certificate and trusts only PostgreSQL login
+certificates from the new pool, so a client restarted before it either distrusts its certificate or
+presents one it refuses. Wait on each rollout, not on availability: the old pods keep a Deployment
+available, so an availability wait passes while the new pods are failing:
 
 ```bash run id=c-rotate-pools when=manual
 for s in podcertificate-controller-system/service-dns-ca-pool podcertificate-controller-system/pod-identity-ca-pool \
+         podcertificate-controller-system/postgres-ca-pool \
          ate-system/actor-id-jwt-pool ate-system/actor-id-ca-pool ate-system/egress-mitm-ca-pool ate-system/actor-id-ca-certs; do
   kubectl delete secret "${s#*/}" -n "${s%%/*}"
 done
@@ -503,6 +698,7 @@ ca_pool() {
 }
 ca_pool service-dns-ca-pool podcertificate-controller-system
 ca_pool pod-identity-ca-pool podcertificate-controller-system
+ca_pool postgres-ca-pool podcertificate-controller-system
 kubectl-ate admin make-jwt-pool --key-id=1 --name=actor-id-jwt-pool --secret-namespace=ate-system
 ca_pool actor-id-ca-pool ate-system
 ca_pool egress-mitm-ca-pool ate-system --key-type=ECDSAP256
@@ -514,7 +710,7 @@ kubectl rollout restart deployment -n podcertificate-controller-system
 kubectl rollout status deployment -n podcertificate-controller-system --timeout=300s
 # Wait until the published trust bundles carry the new roots: components read them once, at start.
 fp() { openssl x509 -noout -fingerprint -sha256 | cut -d= -f2; }
-for pool in service-dns pod-identity; do
+for pool in service-dns pod-identity postgres; do
   want=$(kubectl get secret ${pool}-ca-pool -n podcertificate-controller-system -o jsonpath='{.data.tls\.crt}' | base64 --decode | fp)
   bundle=$(echo "$pool" | tr -d '-')
   for i in $(seq 1 60); do
@@ -525,8 +721,8 @@ for pool in service-dns pod-identity; do
   done
   [ "$got" = "$want" ] || { echo "trust bundle ${bundle}: still the old root after 300s" >&2; false; }
 done
-kubectl rollout restart statefulset -n ate-system
-kubectl rollout status statefulset -n ate-system --timeout=300s
+kubectl rollout restart deployment/kagent-postgresql -n kagent
+kubectl rollout status deployment/kagent-postgresql -n kagent --timeout=300s
 kubectl rollout restart deployment -n ate-system
 kubectl rollout restart daemonset/atelet -n ate-system
 for d in $(kubectl get deployment -n ate-system -o name); do kubectl rollout status "$d" -n ate-system --timeout=300s; done
@@ -549,10 +745,10 @@ kubectl get secret actor-id-ca-pool -n ate-system -o jsonpath='{.data.tls\.crt}'
 ```
 
 Verified on this release by running the block and then the guide's Validate section, which passed:
-a new conversation, restored from a golden image taken before the rotation, worked end to end. A
-conversation suspended before the rotation also resumed after it with its context: its first turn
-set a fact, the rotation ran, and its next turn answered from that fact, on the same actor, with a
-128 ms restore and a 1.19 s round trip, and no errors in the router, ate-api or atelet logs.
+a new session, restored from a golden image taken before the rotation, worked end to end. A session
+suspended before the rotation also resumed after it with its context: its first turn set a fact,
+the rotation ran, and its next turn answered from that fact, on the same actor, with a 103 ms
+restore, and no `UnknownIssuer` in the router's log.
 
 On a cluster without the beta certificates API (Attachment B), also republish the trust ConfigMaps
 from the new pools; that path was not tested.
@@ -590,7 +786,7 @@ kubectl get remotemcpserver deployment-codes -n kagent -o jsonpath='{.status.con
 discovery, `c-mcp-rediscover` above.
 
 **C.14 [D7] The chart's `kagent-api` `RemoteMCPServer` reports `Unauthorized` from install.**
-*Observed during discovery.* Cause: it points at the controller's own MCP endpoint, which requires a
+*Reproduced (every install).* Cause: it points at the controller's own MCP endpoint, which requires a
 token, and the built-in client sends none. Fix: none on this release; do not give agents tools from
 it. Check its state:
 
