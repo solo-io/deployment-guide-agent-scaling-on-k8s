@@ -14,7 +14,9 @@ never reach a command.
   extract.py <guide.md> --attachment <file.md> ...  apply an attachment's blocks
   extract.py <guide.md> [--attachment <f>] --only <id>[,<id>...]
 
-With --from, blocks before <id> are skipped except the environment block and any
+The shell setup block (`shell-setup`) and the environment block always run, whatever is selected.
+
+With --from, blocks before <id> are skipped except those two and any
 block whose id ends in -helper or -helpers (function definitions later blocks
 call), and values a reader's shell would still hold are restored from the cluster.
 
@@ -22,7 +24,7 @@ With --attachment, an attachment block tagged `replaces=<id>` runs in place of t
 guide's block <id>, and one tagged `after=<id>` runs right after it. Untagged
 attachment blocks run only when named with --only.
 
-With --only, the script is the environment block, the restore, every helper block,
+With --only, the script is the shell setup and environment blocks, the restore, every helper block,
 and then the named blocks (manual ones included), in the order given.
 """
 import re
@@ -79,6 +81,9 @@ def attr(info, name):
     return m.group(1) if m else None
 
 
+ALWAYS = ("shell-setup", "environment-setup-env")
+
+
 def is_helper(bid):
     return bid.endswith("-helper") or bid.endswith("-helpers")
 
@@ -128,7 +133,8 @@ def main():
         missing = [w for w in want if w not in index]
         if missing:
             sys.exit("no block with id " + ", ".join(missing))
-        emit(index["environment-setup-env"])
+        for a in ALWAYS:
+            emit(index[a])
         script.append(RESTORE)
         for b in merged:
             if is_helper(b[0]) and b[0] not in want:
@@ -151,7 +157,7 @@ def main():
             continue
         if n > end:
             break
-        if n < start and not (b[0] == "environment-setup-env" or is_helper(b[0])):
+        if n < start and not (b[0] in ALWAYS or is_helper(b[0])):
             continue
         emit(b)
         if b[0] == "environment-setup-env" and frm:

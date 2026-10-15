@@ -5,6 +5,10 @@
 #   auto-build/run.sh --from <id>      resume at a block
 #   auto-build/run.sh --to <id>        stop after a block
 #   auto-build/run.sh --dry-run        print the script, run nothing
+#   auto-build/run.sh --shell zsh ...  run it under zsh instead of bash
+#
+# The script runs from a new, empty directory outside the repository, so a block that depends on
+# the repository or on the current directory fails here as it would for a reader.
 #
 # Credentials come from the environment, or from auto-build/.env.local (gitignored).
 # The log, one section per block, goes to auto-build/logs/.
@@ -25,19 +29,32 @@ for c in $CREDS; do
   export "__CRED_$c=$v"
 done
 
+RUN_SHELL=bash; ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in --shell) RUN_SHELL="$2"; shift 2 ;; *) ARGS+=("$1"); shift ;; esac
+done
+case "$RUN_SHELL" in bash|zsh) ;; *) echo "run.sh: --shell must be bash or zsh" >&2; exit 2 ;; esac
+SHELL_BIN=$(command -v "$RUN_SHELL") || { echo "run.sh: $RUN_SHELL not found" >&2; exit 2; }
+set -- ${ARGS[@]+"${ARGS[@]}"}
 SCRIPT="$(python3 -I "$HERE/extract.py" "$GUIDE" "$@")" || exit 2
 case " $* " in *" --dry-run "*) printf '%s\n' "$SCRIPT"; exit 0 ;; esac
-bash -n <(printf '%s\n' "$SCRIPT") || { echo "run.sh: extracted script is not valid bash" >&2; exit 2; }
+"$SHELL_BIN" -n <(printf '%s\n' "$SCRIPT") || { echo "run.sh: extracted script is not valid $RUN_SHELL" >&2; exit 2; }
 
 mkdir -p "$HERE/logs"
-LOG="$HERE/logs/run-$(date -u +%Y%m%dT%H%M%SZ).log"
-echo "context: $(kubectl config current-context 2>/dev/null || echo none)   log: $LOG"
+LOG="$HERE/logs/run-$(date -u +%Y%m%dT%H%M%SZ)-$RUN_SHELL.log"
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/guide-run.XXXXXX")
+echo "context: $(kubectl config current-context 2>/dev/null || echo none)   shell: $RUN_SHELL   cwd: $WORK   log: $LOG"
 # Run from a file with stdin closed: a block that reads stdin (kubectl run -i, for one) would
 # otherwise consume the rest of the script and end the run early with status 0.
 SCRIPT_FILE="$HERE/logs/$(basename "$LOG" .log).sh"
 printf '%s\n' "$SCRIPT" > "$SCRIPT_FILE"
-bash "$SCRIPT_FILE" < /dev/null > "$LOG" 2>&1
+# zsh -f: no startup files, so the run sees only what the guide sets, as bash does.
+case "$RUN_SHELL" in zsh) FLAGS=(-f) ;; *) FLAGS=() ;; esac
+(cd "$WORK" && "$SHELL_BIN" ${FLAGS[@]+"${FLAGS[@]}"} "$SCRIPT_FILE") < /dev/null > "$LOG" 2>&1
 rc=$?
+leftover=$(ls -A "$WORK" | head -5 | tr '\n' ' ')
+rm -rf "$WORK"
+[ -n "$leftover" ] && echo "run.sh: blocks left files in the working directory: $leftover"
 last=$(grep '^>>>' "$LOG" | tail -1)
 if [ $rc -eq 0 ] && [ "$last" != ">>>DONE" ]; then
   echo "run.sh: the script ended without reaching its last block" >&2; rc=1

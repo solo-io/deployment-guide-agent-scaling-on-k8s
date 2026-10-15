@@ -32,7 +32,7 @@ browser and the cluster already reach the same URL.
 | Resource | Purpose |
 |---|---|
 | Secret `keycloak/keycloak-admin` | The bootstrap admin password, generated in your shell |
-| Secret `keycloak/keycloak-realm` | The realm, rendered from `infra/keycloak/kagent-realm.template.json` with generated secrets and passwords |
+| Secret `keycloak/keycloak-realm` | The realm, rendered from the template in Step 23's `keycloak-realm` block with generated secrets and passwords |
 | Deployment and Service `keycloak/keycloak` | Keycloak in dev mode, importing the realm at start; the Service port equals the issuer's port |
 | CoreDNS rewrite | Makes `keycloak.localhost` resolve inside the cluster |
 | Secret `kagent/kagent-enterprise-oidc-secret` | The `kagent-backend` client secret, for the controller |
@@ -196,6 +196,7 @@ openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=${SVC}
 printf 'subjectAltName=DNS:%s,DNS:%s.cluster.local\nextendedKeyUsage=serverAuth\n' "$SVC" "$SVC" > "$WORK/ext"
 openssl x509 -req -in "$WORK/tls.csr" -CA "$WORK/ca.crt" -CAkey "$WORK/ca.key" -CAcreateserial \
   -days 365 -extfile "$WORK/ext" -out "$WORK/tls.crt" 2>/dev/null
+kubectl delete secret ate-ca-server-tls -n ${PCC} --ignore-not-found
 kubectl create secret tls ate-ca-server-tls -n ${PCC} --cert="$WORK/tls.crt" --key="$WORK/tls.key"
 for pool in pod-identity service-dns; do
   kubectl get secret ${pool}-ca-pool -n ${PCC} -o jsonpath='{.data.pool}' | base64 --decode \
@@ -203,6 +204,7 @@ for pool in pod-identity service-dns; do
         printf '%s' "$der" | base64 --decode | openssl x509 -inform der -outform pem; done > "$WORK/${pool}.pem"
 done
 for ns in ate-system ${PCC} kagent; do
+  kubectl delete configmap ate-ca-server-ca ate-ca-podidentity-trust ate-ca-servicedns-trust -n ${ns} --ignore-not-found
   kubectl create configmap ate-ca-server-ca -n ${ns} --from-file=ca.crt="$WORK/ca.crt"
   kubectl create configmap ate-ca-podidentity-trust -n ${ns} --from-file=trust-bundle.pem="$WORK/pod-identity.pem"
   kubectl create configmap ate-ca-servicedns-trust -n ${ns} --from-file=trust-bundle.pem="$WORK/service-dns.pem"
@@ -273,6 +275,7 @@ PG_SETUP=$(mktemp -d)
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 365 \
   -subj "/CN=kagent-postgresql.kagent.svc" -addext "subjectAltName=DNS:kagent-postgresql.kagent.svc" \
   -keyout "$PG_SETUP/tls.key" -out "$PG_SETUP/tls.crt" 2>/dev/null
+kubectl delete secret kagent-postgresql-tls -n kagent --ignore-not-found
 kubectl create secret tls kagent-postgresql-tls -n kagent --cert="$PG_SETUP/tls.crt" --key="$PG_SETUP/tls.key"
 kubectl apply -f- <<EOF
 apiVersion: v1
@@ -382,10 +385,13 @@ PW_KAGENT=$(openssl rand -hex 24); PW_OWNER=$(openssl rand -hex 24); PW_RW=$(ope
       --set=substrate_owner_role=substrate_owner --set=substrate_owner_user=substrate_owner_user \
       --set=substrate_readwrite_role=substrate_readwrite --set=substrate_readwrite_user=substrate_readwrite_user
 DB=kagent-postgresql.kagent.svc:5432/kagent?sslmode=require
+kubectl delete secret kagent-postgres -n kagent --ignore-not-found
 printf 'postgresql://kagent_user:%s@%s' "$PW_KAGENT" "$DB" \
   | kubectl create secret generic kagent-postgres -n kagent --from-file=connectionString=/dev/stdin
+kubectl delete secret substrate-postgres-owner -n ate-system --ignore-not-found
 printf 'postgresql://substrate_owner_user:%s@%s' "$PW_OWNER" "$DB" \
   | kubectl create secret generic substrate-postgres-owner -n ate-system --from-file=ownerConnectionString=/dev/stdin
+kubectl delete secret substrate-postgres-readwrite -n ate-system --ignore-not-found
 printf 'postgresql://substrate_readwrite_user:%s@%s' "$PW_RW" "$DB" \
   | kubectl create secret generic substrate-postgres-readwrite -n ate-system --from-file=readWriteConnectionString=/dev/stdin
 unset PW_KAGENT PW_OWNER PW_RW
@@ -654,10 +660,11 @@ gateway's Secret and recreate the agent's copy:
 ```bash run id=c-consumer-key-recreate when=manual
 export AGENT_CONSUMER_KEY=$(kubectl get secret llm-virtual-keys -n agentgateway-system \
   -o jsonpath='{.data.team-agents}' | base64 --decode | jq -r .key)
-: "${AGENT_CONSUMER_KEY:?still empty}"
+: "${AGENT_CONSUMER_KEY:?still empty}" && {
 kubectl delete secret kagent-gateway-consumer-key -n kagent --ignore-not-found
 printf '%s' "$AGENT_CONSUMER_KEY" | kubectl create secret generic kagent-gateway-consumer-key -n kagent --from-file=api-key=/dev/stdin
 echo "length: $(kubectl get secret kagent-gateway-consumer-key -n kagent -o jsonpath='{.data.api-key}' | base64 --decode | wc -c | tr -d ' ')"
+}
 ```
 
 **C.9 [D3] The worker pool is a worker short after a change.** *Observed during discovery.* Cause:
@@ -864,13 +871,14 @@ controller restart:
 ```bash run id=c-oidc-secret-recreate when=manual
 export KAGENT_OIDC_CLIENT_SECRET=$(kubectl get secret keycloak-realm -n keycloak -o jsonpath='{.data.realm\.json}' \
   | base64 --decode | jq -r '.clients[] | select(.clientId == "kagent-backend") | .secret')
-: "${KAGENT_OIDC_CLIENT_SECRET:?still empty}"
+: "${KAGENT_OIDC_CLIENT_SECRET:?still empty}" && {
 kubectl delete secret kagent-enterprise-oidc-secret -n kagent --ignore-not-found
 printf '%s' "$KAGENT_OIDC_CLIENT_SECRET" | kubectl create secret generic kagent-enterprise-oidc-secret \
   -n kagent --from-file=clientSecret=/dev/stdin
 kubectl rollout restart deployment/kagent-controller -n kagent
 kubectl rollout status deployment/kagent-controller -n kagent --timeout=300s
 forwards
+}
 ```
 
 Re-running Step 23's `helm-kagent-oidc` block afterwards brings Helm's record of the release back to

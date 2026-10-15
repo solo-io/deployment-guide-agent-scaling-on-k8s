@@ -9,6 +9,7 @@ that fails is a guide problem, and the fix goes in `docs/`, not here.
 | `extract.py` | Writes the guide's runnable blocks out as one bash script, or lists their IDs |
 | `run.sh` | Applies your credentials, runs that script against the current cluster, logs each block |
 | `demo-ui.sh` | Brings the UI back up on a cluster the guide built, for a demo |
+| `check-paste.py` | Pastes every block into an interactive zsh and bash, with and without `shell-setup`, and reports the blocks that break |
 
 ## Credentials
 
@@ -44,13 +45,17 @@ auto-build/run.sh --dry-run          # print the script that would run, run noth
 auto-build/run.sh                    # run every block
 auto-build/run.sh --from <block-id>  # resume at a block
 auto-build/run.sh --to <block-id>    # stop after a block
+auto-build/run.sh --shell zsh         # run it under zsh (default: bash)
 auto-build/extract.py docs/deployment-guide-keycloak.md --list   # block IDs, in order
 
 auto-build/run.sh --attachment docs/attachments.md --to step-9-gateway-log   # Attachment B's path
 auto-build/run.sh --attachment docs/attachments.md --only c-pools-check,c-license-state
 ```
 
-It runs against whatever `KUBECONFIG` points at. Step 1 creates the cluster, so a full run expects
+It runs against whatever `KUBECONFIG` points at, from a new, empty directory outside the repository
+(deleted afterwards), so a block that depends on the repository or the current directory fails
+here as it would for someone working from the guide alone. A certification passes under both
+`--shell bash` and `--shell zsh`; zsh runs with `-f`, so no startup file is read. Step 1 creates the cluster, so a full run expects
 no kind cluster named `KIND_CLUSTER_NAME` (default `agents`) to exist yet. To keep the build out of
 your own kubeconfig and home directory, set both before running:
 
@@ -126,3 +131,18 @@ containers restarted in place (a node restart; the guide's Attachment C.23), for
 answer, and prints the UI's URL, the three users and the path of the file holding their passwords.
 `KAGENT_UI_PORT`, `KEYCLOAK_PORT` and `KAGENT_UI_CREDENTIALS_FILE` change the defaults; the
 Keycloak port must be the one the cluster was built with, because it is part of the issuer URL.
+
+## Checking that blocks survive a paste
+
+```bash
+auto-build/check-paste.py
+```
+
+A reader pastes blocks into an interactive shell, which reads them differently from a script: zsh
+does not take `#` as a comment unless `interactive_comments` is set, and both shells expand `!` in
+double quotes as history. `zsh -n` checks none of that, and an interactive zsh refuses `noexec`, so
+the check runs each block for real in `zsh -f -i` and `bash -i` with `PATH` pointing at stubs that
+do nothing, and collects the errors the shell reports while reading it. Each block is pasted with
+default options and after the guide's `shell-setup` block. It also flags variables named after
+zsh's special parameters (`status`, `path` and the rest). It exits 1 if a block fails after
+`shell-setup`; blocks that fail only without it are listed for information.
