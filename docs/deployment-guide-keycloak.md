@@ -201,18 +201,33 @@ appeared to work. Define this now and re-run it whenever something refuses to co
 
 ```bash run id=ports-forwards-helper
 forwards() {
-  pkill -f "kubectl port-forward.*-n kagent" 2>/dev/null || true
-  kubectl rollout status deployment/kagent-controller -n kagent --timeout=120s
-  kubectl rollout status deployment/kagent-ui -n kagent --timeout=120s
-  kubectl port-forward --address 127.0.0.1 -n kagent deployment/kagent-controller ${KAGENT_API_PORT}:8083 >/dev/null 2>&1 &
-  kubectl port-forward --address 127.0.0.1 -n kagent service/kagent-ui ${KAGENT_UI_PORT}:8080 >/dev/null 2>&1 &
+  pkill -f "kubectl --context kind-${KIND_CLUSTER_NAME} port-forward .*-n kagent " 2>/dev/null || true
+  kubectl --context "kind-${KIND_CLUSTER_NAME}" rollout status deployment/kagent-controller -n kagent --timeout=120s
+  kubectl --context "kind-${KIND_CLUSTER_NAME}" rollout status deployment/kagent-ui -n kagent --timeout=120s
+  kubectl --context "kind-${KIND_CLUSTER_NAME}" port-forward --address 127.0.0.1 -n kagent deployment/kagent-controller ${KAGENT_API_PORT}:8083 >/dev/null 2>&1 &
+  kubectl --context "kind-${KIND_CLUSTER_NAME}" port-forward --address 127.0.0.1 -n kagent service/kagent-ui ${KAGENT_UI_PORT}:8080 >/dev/null 2>&1 &
   sleep 2
   echo "forwards up: controller ${KAGENT_API_PORT}, ui ${KAGENT_UI_PORT}"
 }
+
+# stop_forwards: close every port-forward this guide opened to this cluster, and say which ports it freed.
+stop_forwards() {
+  local pat="kubectl --context kind-${KIND_CLUSTER_NAME} port-forward " ports
+  ports=$(pgrep -f "$pat" | while read -r p; do ps -o command= -p "$p"; done \
+    | grep -oE ' [0-9]+:[0-9]+' | cut -d: -f1 | tr -d ' ' | sort -n | tr '\n' ' ')
+  if pkill -f "$pat"; then
+    echo "closed the port-forwards to kind-${KIND_CLUSTER_NAME}; ports freed: ${ports}"
+  else
+    echo "no port-forwards open to kind-${KIND_CLUSTER_NAME}"
+  fi
+}
 ```
 
-The `pkill` pattern closes every forward you have open against the `kagent` namespace. The
-`|| true` matters on a first run: `pkill` exits non-zero when nothing matched.
+Every port-forward in this guide names this cluster's context (`kind-${KIND_CLUSTER_NAME}`), and
+`forwards` closes only the ones to its `kagent` namespace, so a forward you have open to another
+cluster is never touched. The `|| true` matters on a first run: `pkill` exits non-zero when nothing
+matched. `stop_forwards` closes all of them, Keycloak's and any gateway forward left running
+included, when you are done with this cluster or switching to another.
 
 ## UP AND RUNNING
 
@@ -925,7 +940,7 @@ Prove the route refuses a caller with no key and serves one with the consumer ke
 is involved. The port-forward goes straight to the proxy pod and is closed again at the end:
 
 ```bash run id=step-6-gateway-check
-kubectl port-forward --address 127.0.0.1 -n agentgateway-system deployment/agentgateway-proxy 18081:80 >/dev/null 2>&1 &
+kubectl --context "kind-${KIND_CLUSTER_NAME}" port-forward --address 127.0.0.1 -n agentgateway-system deployment/agentgateway-proxy 18081:80 >/dev/null 2>&1 &
 GW_PF=$!
 sleep 3
 MSG="{\"model\":\"${MODEL}\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly: gateway ok\"}]}"
@@ -1043,11 +1058,16 @@ printf '%s' "$AGENT_CONSUMER_KEY" | kubectl create secret generic kagent-gateway
 ```
 
 > [!WARNING]
-> **An empty consumer key fails nothing until the first turn.** `AGENT_CONSUMER_KEY` exists only in the shell that ran Step 6. In a new shell it is empty, and without the guard above an empty Secret is created without complaint, the agent still goes `Ready`, and the first turn fails with `503 Service Unavailable credential provider returned an unusable secret`. If the guard stops you, read the key back from the gateway's Secret and run the block again:
+> **An empty consumer key fails nothing until the first turn.** `AGENT_CONSUMER_KEY` exists only in the shell that ran Step 6. In a new shell it is empty, and without the guard above an empty Secret is created without complaint, the agent still goes `Ready`, and the first turn fails with `503 Service Unavailable credential provider returned an unusable secret`. If the guard stops you, read the key back from the gateway's Secret, then run the block above again.
+
+**Only if the guard above stopped you.** This reads the key only when your shell has none, so it changes nothing otherwise:
 
 ```bash run id=step-8-read-back-consumer-key when=manual
-export AGENT_CONSUMER_KEY=$(kubectl get secret llm-virtual-keys -n agentgateway-system \
-  -o jsonpath='{.data.team-agents}' | base64 --decode | jq -r .key)
+if [ -z "${AGENT_CONSUMER_KEY:-}" ]; then
+  export AGENT_CONSUMER_KEY=$(kubectl get secret llm-virtual-keys -n agentgateway-system \
+    -o jsonpath='{.data.team-agents}' | base64 --decode | jq -r .key)
+  echo "AGENT_CONSUMER_KEY read back; run secret-kagent-gateway-consumer-key again"
+fi
 ```
 
 ```bash run id=agent-assistant
@@ -2429,7 +2449,7 @@ another gateway guide, and a forward that cannot bind fails silently in the back
 ```bash run id=step-21-attribution
 kagent_send assistant "Reply with exactly: attributed"
 kagent_send assistant-claude-code "Reply with exactly: attributed"
-kubectl port-forward --address 127.0.0.1 -n agentgateway-system deployment/agentgateway-proxy 18082:15020 >/dev/null 2>&1 &
+kubectl --context "kind-${KIND_CLUSTER_NAME}" port-forward --address 127.0.0.1 -n agentgateway-system deployment/agentgateway-proxy 18082:15020 >/dev/null 2>&1 &
 PF=$!; sleep 3
 if ! kill -0 $PF 2>/dev/null; then
   echo "the port-forward on 18082 did not start: something else holds the port" >&2
@@ -2979,8 +2999,8 @@ fi
 Forward the same port on your machine, then check that the issuer is byte-identical from both sides:
 
 ```bash run id=keycloak-forward
-pkill -f "kubectl port-forward.*-n keycloak" 2>/dev/null || true
-kubectl port-forward --address 127.0.0.1 -n keycloak service/keycloak ${KEYCLOAK_PORT}:${KEYCLOAK_PORT} >/dev/null 2>&1 &
+pkill -f "kubectl --context kind-${KIND_CLUSTER_NAME} port-forward .*-n keycloak " 2>/dev/null || true
+kubectl --context "kind-${KIND_CLUSTER_NAME}" port-forward --address 127.0.0.1 -n keycloak service/keycloak ${KEYCLOAK_PORT}:${KEYCLOAK_PORT} >/dev/null 2>&1 &
 sleep 3
 echo "workstation: $(curl -sS http://keycloak.localhost:${KEYCLOAK_PORT}/realms/kagent/.well-known/openid-configuration | jq -r .issuer)"
 CLUSTER_ISSUER=""
@@ -3047,15 +3067,20 @@ forwards up: controller 18083, ui 14000
 ```
 
 > [!WARNING]
-> **An empty client secret takes the controller down.** The secrets from the start of this step exist only in the shell that generated them. With an empty `KAGENT_OIDC_CLIENT_SECRET` the Secret is created empty, the upgrade rolls a controller that crash-loops with `OIDC client secret must not be empty`, and `--wait` fails with `Progress deadline exceeded`; the old controller keeps serving meanwhile. If the guard stops you, read the secrets back from the realm Secret below and run the block again. If an empty Secret was already created, delete it first (`kubectl delete secret kagent-enterprise-oidc-secret -n kagent`): the block creates it, and a create fails on an existing Secret.
+> **An empty client secret takes the controller down.** The secrets from the start of this step exist only in the shell that generated them. With an empty `KAGENT_OIDC_CLIENT_SECRET` the Secret is created empty, the upgrade rolls a controller that crash-loops with `OIDC client secret must not be empty`, and `--wait` fails with `Progress deadline exceeded`; the old controller keeps serving meanwhile. If the guard stops you, read the secrets back from the realm with the block below, then run the block above again; it replaces any Secret an earlier attempt created.
+
+**Only if the guard above stopped you.** This reads back only the values your shell does not have, so it changes nothing otherwise:
 
 ```bash run id=step-23-read-back-secrets when=manual
-export KEYCLOAK_ADMIN_PASSWORD=$(kubectl get secret keycloak-admin -n keycloak -o jsonpath='{.data.password}' | base64 --decode)
-REALM=$(kubectl get secret keycloak-realm -n keycloak -o jsonpath='{.data.realm\.json}' | base64 --decode)
-export KAGENT_OIDC_CLIENT_SECRET=$(printf '%s' "$REALM" | jq -r '.clients[] | select(.clientId == "kagent-backend") | .secret')
-for u in admin writer reader norole; do
-  export "KAGENT_$(echo "$u" | tr '[:lower:]' '[:upper:]')_PASSWORD=$(printf '%s' "$REALM" | jq -r --arg u "$u" '.users[] | select(.username == $u) | .credentials[0].value')"
-done
+if [ -z "${KAGENT_OIDC_CLIENT_SECRET:-}" ]; then
+  export KEYCLOAK_ADMIN_PASSWORD=$(kubectl get secret keycloak-admin -n keycloak -o jsonpath='{.data.password}' | base64 --decode)
+  REALM=$(kubectl get secret keycloak-realm -n keycloak -o jsonpath='{.data.realm\.json}' | base64 --decode)
+  export KAGENT_OIDC_CLIENT_SECRET=$(printf '%s' "$REALM" | jq -r '.clients[] | select(.clientId == "kagent-backend") | .secret')
+  for u in admin writer reader norole; do
+    export "KAGENT_$(echo "$u" | tr '[:lower:]' '[:upper:]')_PASSWORD=$(printf '%s' "$REALM" | jq -r --arg u "$u" '.users[] | select(.username == $u) | .credentials[0].value')"
+  done
+  echo "Keycloak values read back; run helm-kagent-oidc again"
+fi
 ```
 
 The controller pod no longer has its `idp` container: the bundled login is gone. The upgrade rolled
@@ -3088,18 +3113,7 @@ enable kagent-cli: HTTP 204
 token from kagent-cli once enabled:  issued
 ```
 
-Disabling it is the same call with `enabled` set to `false`; Before production lists it. When you are
-done scripting against this cluster:
-
-```bash run id=keycloak-disable-kagent-cli when=manual
-KC="http://keycloak.localhost:${KEYCLOAK_PORT}"
-ADMIN_TOKEN=$(curl -sS -X POST "${KC}/realms/master/protocol/openid-connect/token" -d grant_type=password \
-  -d client_id=admin-cli -d username=admin --data-urlencode "password=${KEYCLOAK_ADMIN_PASSWORD}" | jq -r .access_token)
-CLI_ID=$(curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/clients?clientId=kagent-cli" | jq -r '.[0].id')
-curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/clients/${CLI_ID}" | jq '.enabled = false' \
-  | curl -sS -o /dev/null -w 'disable kagent-cli: HTTP %{http_code}\n' -X PUT -H "Authorization: Bearer ${ADMIN_TOKEN}" \
-      -H 'Content-Type: application/json' --data-binary @- "${KC}/admin/realms/kagent/clients/${CLI_ID}"
-```
+Disabling it again is in Before production, for when you are done scripting against this cluster.
 
 These helpers replace Step 9's: `kagent_token` uses the
 `kagent-cli` client's password grant, as the user in `KAGENT_USER` (default `writer`), and
@@ -3207,7 +3221,8 @@ passwords are in `~/.kagent-ui-credentials`, or `auto-build/.env.local` when `au
 built the cluster: load them into a new shell with `set -a; . ~/.kagent-ui-credentials; set +a`, or
 copy one without displaying it with `grep '^KAGENT_READER_PASSWORD=' ~/.kagent-ui-credentials | cut
 -d= -f2- | tr -d '\n' | pbcopy`. After a break or a node restart, `auto-build/demo-ui.sh` brings
-the UI back.
+the UI back. When you are done, or before switching to another cluster, `stop_forwards` closes this
+cluster's forwards and frees their ports.
 
 **What you now have:** the agent holds no key and can reach only what its policy names; MCP tools and
 the model both sit behind one gateway that holds their credentials, attributes every token and
@@ -3667,7 +3682,7 @@ record "Steps 6, 7, 9" "Model call at the gateway, from Substrate egress" "$(kub
   | grep 'route=agentgateway-system/anthropic-messages' | grep "src.addr=${EGRESS_IP}:" | tail -1 | grep -oE 'http.status=[0-9]+')" '^http.status=200$'
 record "Step 20" "Tool call at the MCP server: source, credential" "$(kubectl logs -n mcp-tools deployment/deployment-codes \
   | jq -r 'select(.rpc == "tools/call") | "\(.src) \(.auth)"' | tail -1)" "^${GATEWAY_IP} bearer-match$"
-kubectl port-forward --address 127.0.0.1 -n agentgateway-system deployment/agentgateway-proxy 18082:15020 >/dev/null 2>&1 &
+kubectl --context "kind-${KIND_CLUSTER_NAME}" port-forward --address 127.0.0.1 -n agentgateway-system deployment/agentgateway-proxy 18082:15020 >/dev/null 2>&1 &
 PF=$!; sleep 3
 if kill -0 $PF 2>/dev/null; then
   ATTRIBUTED=$(curl -sS http://127.0.0.1:18082/metrics | grep '^agentgateway_gen_ai_client_token_usage_sum' | grep -c 'team="team-agents"' || true)
@@ -3780,8 +3795,19 @@ What it does not do yet is in Before production.
 Each item is a limit of this release that you can plan for, with the step that shows it.
 
 - **Disable or delete the `kagent-cli` client.** It issues tokens by password without a browser, for
-  scripts. Disable it once scripting is done (Step 23 has the command), and give production scripts
+  scripts. Disable it once scripting is done, with the block below, and give production scripts
   a confidential client with the client credentials grant.
+
+```bash run id=keycloak-disable-kagent-cli when=manual
+KC="http://keycloak.localhost:${KEYCLOAK_PORT}"
+ADMIN_TOKEN=$(curl -sS -X POST "${KC}/realms/master/protocol/openid-connect/token" -d grant_type=password \
+  -d client_id=admin-cli -d username=admin --data-urlencode "password=${KEYCLOAK_ADMIN_PASSWORD}" | jq -r .access_token)
+CLI_ID=$(curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/clients?clientId=kagent-cli" | jq -r '.[0].id')
+curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/clients/${CLI_ID}" | jq '.enabled = false' \
+  | curl -sS -o /dev/null -w 'disable kagent-cli: HTTP %{http_code}\n' -X PUT -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+      -H 'Content-Type: application/json' --data-binary @- "${KC}/admin/realms/kagent/clients/${CLI_ID}"
+```
+
 - **Treat the snapshot store as holding every session in readable form.** Each snapshot is the
   actor's memory as well as its data, compressed, not encrypted: anything the runtime held in memory
   is in it (Step 17). Keep the NetworkPolicy from Step 22, keep the credentials out of anything you
@@ -3826,3 +3852,10 @@ Each item is a limit of this release that you can plan for, with the step that s
 - **Delete an agent's sessions when you retire it.** Deleting the `Agent` leaves its template
   and golden image in place while any session exists (Step 14).
 - **Use gVisor.** It is the sandbox verified here; Firecracker was not tested on this release.
+
+When you are done with this cluster, or before working on another, close its port-forwards. This
+frees ports 18080 to 18083 and 14000 and leaves forwards to other clusters alone:
+
+```bash run id=stop-forwards when=manual
+stop_forwards
+```

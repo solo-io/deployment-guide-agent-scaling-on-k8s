@@ -6,6 +6,8 @@
 #   auto-build/run.sh --to <id>        stop after a block
 #   auto-build/run.sh --dry-run        print the script, run nothing
 #   auto-build/run.sh --shell zsh ...  run it under zsh instead of bash
+#   auto-build/run.sh --in-order       include when=manual blocks where they appear, as a reader pasting
+#                                      the guide top to bottom would
 #
 # The script runs from a new, empty directory outside the repository, so a block that depends on
 # the repository or on the current directory fails here as it would for a reader.
@@ -41,7 +43,8 @@ case " $* " in *" --dry-run "*) printf '%s\n' "$SCRIPT"; exit 0 ;; esac
 "$SHELL_BIN" -n <(printf '%s\n' "$SCRIPT") || { echo "run.sh: extracted script is not valid $RUN_SHELL" >&2; exit 2; }
 
 mkdir -p "$HERE/logs"
-LOG="$HERE/logs/run-$(date -u +%Y%m%dT%H%M%SZ)-$RUN_SHELL.log"
+MODE=normal; case " $* " in *" --in-order "*) MODE=in-order ;; esac
+LOG="$HERE/logs/run-$(date -u +%Y%m%dT%H%M%SZ)-$RUN_SHELL-$MODE.log"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/guide-run.XXXXXX")
 echo "context: $(kubectl config current-context 2>/dev/null || echo none)   shell: $RUN_SHELL   cwd: $WORK   log: $LOG"
 # Run from a file with stdin closed: a block that reads stdin (kubectl run -i, for one) would

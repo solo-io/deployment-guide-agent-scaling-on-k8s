@@ -6,14 +6,16 @@
 # Restarts the worker pool if its containers restarted in place (a node restart, D18 in the guide's
 # Attachment C.23), forwards the UI to 127.0.0.1:${KAGENT_UI_PORT:-14000} and Keycloak to
 # 127.0.0.1:${KEYCLOAK_PORT:-18080}, checks both answer, and says where the passwords are. A port
-# that already answers is left as it is. Prints no password.
+# already held by this cluster's forward is left as it is; one held by anything else is reported.
+# Prints no password.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 UI_PORT=${KAGENT_UI_PORT:-14000}
 KC_PORT=${KEYCLOAK_PORT:-18080}
 CREDS=${KAGENT_UI_CREDENTIALS_FILE:-$HERE/.env.local}
 ATE=$(command -v kubectl-ate || echo "${ATE_BIN_DIR:-$HOME/.local/bin}/kubectl-ate")
-echo "context: $(kubectl config current-context)"
+CTX=$(kubectl config current-context)
+echo "context: ${CTX}"
 
 # Containers that restarted in place keep stale worker registrations: turns are refused until the
 # pool is restarted and every worker has registered again.
@@ -36,14 +38,18 @@ else
 fi
 
 # forward <local port> <namespace> <service> <service port> <check URL>
+# Every forward names this cluster's context, as the guide's are, so one to another cluster is
+# never reused or touched: a port held by anything else is reported, not taken over.
 forward() {
-  if curl -sS -o /dev/null --max-time 5 "$5" 2>/dev/null; then
-    echo "$3: already answering on 127.0.0.1:$1, left as it is"; return 0
-  fi
   if lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "$3: port $1 is held by something that does not answer; free it and run this again" >&2; return 1
+    if pgrep -f "kubectl --context ${CTX} port-forward .*-n $2 .*[ /]$3 $1:" >/dev/null \
+      && curl -sS -o /dev/null --max-time 5 "$5" 2>/dev/null; then
+      echo "$3: this cluster's forward is already answering on 127.0.0.1:$1, left as it is"; return 0
+    fi
+    echo "$3: port $1 is held by something other than this cluster's forward (another cluster's, or a stale one); close it and run this again" >&2
+    return 1
   fi
-  nohup kubectl port-forward --address 127.0.0.1 -n "$2" "service/$3" "$1:$4" >/dev/null 2>&1 &
+  nohup kubectl --context "${CTX}" port-forward --address 127.0.0.1 -n "$2" "service/$3" "$1:$4" >/dev/null 2>&1 &
   for i in $(seq 1 20); do curl -sS -o /dev/null --max-time 2 "$5" 2>/dev/null && break; sleep 1; done
   if curl -sS -o /dev/null --max-time 5 "$5" 2>/dev/null; then echo "$3: forwarded to 127.0.0.1:$1"
   else echo "$3: started a forward on $1, but it does not answer" >&2; return 1; fi

@@ -108,7 +108,7 @@ groups with `enterprise.rbac.roleMappings`. Only Keycloak was verified with this
 - Dev mode, an in-memory database, and HTTP.
 - Generated passwords that live only in your shell and the realm Secret.
 - `kagent-cli`, a public client with the password grant, once Step 23 enables it. Disable or delete
-  it when you are done (Step 23 has the command).
+  it when you are done (Before production has the command).
 
 ## Attachment B: Clusters without the beta certificates API
 
@@ -893,8 +893,8 @@ Step 23's `keycloak-enable-kagent-cli` block afterwards:
 ```bash run id=c-keycloak-repull when=manual
 kubectl delete pod -n keycloak -l app=keycloak
 kubectl rollout status deployment/keycloak -n keycloak --timeout=600s
-pkill -f "kubectl port-forward.*-n keycloak" 2>/dev/null || true
-kubectl port-forward --address 127.0.0.1 -n keycloak service/keycloak ${KEYCLOAK_PORT}:${KEYCLOAK_PORT} >/dev/null 2>&1 &
+pkill -f "kubectl --context kind-${KIND_CLUSTER_NAME} port-forward .*-n keycloak " 2>/dev/null || true
+kubectl --context "kind-${KIND_CLUSTER_NAME}" port-forward --address 127.0.0.1 -n keycloak service/keycloak ${KEYCLOAK_PORT}:${KEYCLOAK_PORT} >/dev/null 2>&1 &
 sleep 3
 curl -sS http://keycloak.localhost:${KEYCLOAK_PORT}/realms/kagent/.well-known/openid-configuration | jq -r .issuer
 ```

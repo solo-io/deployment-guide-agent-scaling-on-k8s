@@ -10,6 +10,7 @@ __CRED_<NAME> variables that run.sh exports, so the placeholders the guide sets
 never reach a command.
 
   extract.py <guide.md> [--from <id>] [--to <id>]   script on stdout
+  extract.py <guide.md> --in-order                  every block, manual ones too, as a reader pastes them
   extract.py <guide.md> --list                      block ids, one per line
   extract.py <guide.md> --attachment <file.md> ...  apply an attachment's blocks
   extract.py <guide.md> [--attachment <f>] --only <id>[,<id>...]
@@ -23,6 +24,9 @@ call), and values a reader's shell would still hold are restored from the cluste
 With --attachment, an attachment block tagged `replaces=<id>` runs in place of the
 guide's block <id>, and one tagged `after=<id>` runs right after it. Untagged
 attachment blocks run only when named with --only.
+
+With --in-order, `when=manual` blocks run where they appear, like every other block: what a reader
+gets by pasting the guide top to bottom. It combines with --from and --to.
 
 With --only, the script is the shell setup and environment blocks, the restore, every helper block,
 and then the named blocks (manual ones included), in the order given.
@@ -153,7 +157,7 @@ def main():
     start = mids.index(frm) if frm else 0
     end = mids.index(to) if to else len(merged) - 1
     for n, b in enumerate(merged):
-        if "when=manual" in b[1]:
+        if "when=manual" in b[1] and "--in-order" not in args:
             continue
         if n > end:
             break
