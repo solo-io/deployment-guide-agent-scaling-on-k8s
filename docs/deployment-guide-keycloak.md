@@ -1504,10 +1504,11 @@ trace_spans() {
 }
 ```
 
-The collector batches spans for a few seconds, so wait for Step 11's session to appear, then read it:
+The collector batches spans for a few seconds, and the gateway's arrive after the agent's, so wait
+until both are there, then read the session:
 
 ```bash run id=step-12-trace
-for i in $(seq 1 12); do [ -n "$(trace_spans "$CONV")" ] && break; sleep 5; done
+for i in $(seq 1 12); do trace_spans "$CONV" | grep -q agentgateway-proxy && break; sleep 5; done
 trace_spans "$CONV"
 ```
 
@@ -3815,7 +3816,7 @@ record "Steps 8, 21" "Turn using the model and the MCP tool" "$(echo "$TURN" | c
 wait_suspended "$VALIDATE_CONV" >/dev/null
 record "Steps 10, 11" "First restore of the session's actor" "$(actor_events "$VALIDATE_CONV" | head -1 | cut -f2,3 | tr '\t' ' ')" '^Restore timing breakdown golden/full$'
 record "Step 11" "Actor state after the turn" "$(kubectl-ate get actor "session-${VALIDATE_CONV}" -a kagent -o json | jq -r .status.state)" '^ACTOR_STATE_SUSPENDED$'
-for i in $(seq 1 12); do [ -n "$(trace_spans "$VALIDATE_CONV")" ] && break; sleep 5; done
+for i in $(seq 1 12); do trace_spans "$VALIDATE_CONV" | grep -q agentgateway-proxy && break; sleep 5; done
 record "Step 12" "Spans in the turn's trace" "$(trace_spans "$VALIDATE_CONV" \
   | awk -F'\t' '{split($5, w, " "); n[w[1]]++} END {printf "invoke_agent=%d generate_content=%d execute_tool=%d gateway POST=%d", n["invoke_agent"], n["generate_content"], n["execute_tool"], n["POST"]}')" \
   '^invoke_agent=1 generate_content=[1-9][0-9]* execute_tool=1 gateway POST=[1-9]'
