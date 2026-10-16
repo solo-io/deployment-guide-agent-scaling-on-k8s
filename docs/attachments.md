@@ -518,16 +518,6 @@ kmcp:
 controller:
   substrate:
     enabled: true
-telemetry:
-  enabled: true
-config:
-  telemetry:
-    traces:
-      endpoint: http://solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
-  runtimeDefaults:
-    telemetry:
-      traces:
-        endpoint: http://solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
 substrateWorkerPool:
   create: true
   name: kagent-default
