@@ -5,7 +5,7 @@ Kubernetes. Each assumes the guide's Environment setup block has been run in you
 
 ## Attachment A: Keycloak for kagent
 
-Step 23 deploys Keycloak as the reference identity provider. This attachment explains what it
+Step 24 deploys Keycloak as the reference identity provider. This attachment explains what it
 deploys and why each setting is the way it is, so you can reproduce it with your own identity
 provider.
 
@@ -20,19 +20,19 @@ The guide uses `http://keycloak.localhost:${KEYCLOAK_PORT}/realms/kagent`:
 
 | Where | How the name resolves | What answers |
 |---|---|---|
-| Your machine | Browsers and curl resolve any `*.localhost` name to 127.0.0.1 themselves | The port-forward from Step 23 |
+| Your machine | Browsers and curl resolve any `*.localhost` name to 127.0.0.1 themselves | The port-forward from Step 24 |
 | Inside the cluster | A CoreDNS rewrite: `keycloak.localhost` → `keycloak.keycloak.svc.cluster.local` | The Keycloak Service, which listens on the same port |
 
-Both sides must return the same `issuer` from the discovery document. Step 23's `keycloak-forward`
+Both sides must return the same `issuer` from the discovery document. Step 24's `keycloak-forward`
 block checks it. With a real identity provider on a public hostname none of this is needed: the
 browser and the cluster already reach the same URL.
 
-### A.1 What Step 23 deploys
+### A.1 What Step 24 deploys
 
 | Resource | Purpose |
 |---|---|
 | Secret `keycloak/keycloak-admin` | The bootstrap admin password, generated in your shell |
-| Secret `keycloak/keycloak-realm` | The realm, rendered from the template in Step 23's `keycloak-realm` block with generated secrets and passwords |
+| Secret `keycloak/keycloak-realm` | The realm, rendered from the template in Step 24's `keycloak-realm` block with generated secrets and passwords |
 | Deployment and Service `keycloak/keycloak` | Keycloak in dev mode, importing the realm at start; the Service port equals the issuer's port |
 | CoreDNS rewrite | Makes `keycloak.localhost` resolve inside the cluster |
 | Secret `kagent/kagent-enterprise-oidc-secret` | The `kagent-backend` client secret, for the controller |
@@ -40,7 +40,7 @@ browser and the cluster already reach the same URL.
 
 Keycloak runs in dev mode with an in-memory database. **Every restart re-imports the realm from the
 Secret**, so a change made through the admin console or API, such as enabling `kagent-cli` in Step
-23, is lost when the pod restarts. Re-run the enabling block after a restart, or put the change in
+24, is lost when the pod restarts. Re-run the enabling block after a restart, or put the change in
 the template.
 
 ### A.2 The realm
@@ -51,7 +51,7 @@ Three clients, all with a `Groups` mapper that puts the user's group names in a 
 |---|---|---|---|
 | `kagent-backend` | Confidential, with a secret | Authorization code | The kagent controller |
 | `kagent-ui` | Public, PKCE (S256) | Authorization code; redirect `http://localhost:14000/callback`; post-logout redirect `http://localhost:14000` | The browser |
-| `kagent-cli` | Public | Password grant only. **Ships disabled** | Scripts in this guide, after Step 23 enables it |
+| `kagent-cli` | Public | Password grant only. **Ships disabled** | Scripts in this guide, after Step 24 enables it |
 
 The UI's port is substituted from `KAGENT_UI_PORT` when the realm is rendered. The post-logout
 redirect has no trailing slash because the UI sends none; with one, Keycloak refuses sign-out with
@@ -107,7 +107,7 @@ groups with `enterprise.rbac.roleMappings`. Only Keycloak was verified with this
 
 - Dev mode, an in-memory database, and HTTP.
 - Generated passwords that live only in your shell and the realm Secret.
-- `kagent-cli`, a public client with the password grant, once Step 23 enables it. Disable or delete
+- `kagent-cli`, a public client with the password grant, once Step 24 enables it. Disable or delete
   it when you are done (Before production has the command).
 
 ## Attachment B: Clusters without the beta certificates API
@@ -488,7 +488,7 @@ publishes `EnterpriseSubstrateClusterTrustBundles` instead. Substrate runs.
 **kubectl-ate does not.** On this release every kubectl-ate command first looks for the
 ClusterTrustBundle API and fails without it, and it has no option to supply the trust another way.
 In this mode you have no CLI to list, inspect, resume or suspend actors: every kubectl-ate step in
-the guide (Steps 9 to 30) fails with the error above. Agents are unaffected, because the kagent
+the guide (Steps 9 to 31) fails with the error above. Agents are unaffected, because the kagent
 controller does not use kubectl-ate.
 
 ### B.7 kagent (in place of `helm-kagent`)
@@ -518,6 +518,16 @@ kmcp:
 controller:
   substrate:
     enabled: true
+telemetry:
+  enabled: true
+config:
+  telemetry:
+    traces:
+      endpoint: http://solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
+  runtimeDefaults:
+    telemetry:
+      traces:
+        endpoint: http://solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
 substrateWorkerPool:
   create: true
   name: kagent-default
@@ -670,7 +680,7 @@ echo "length: $(kubectl get secret kagent-gateway-consumer-key -n kagent -o json
 **C.9 [D3] The worker pool is a worker short after a change.** *Observed during discovery.* Cause:
 the worker rollout removes a worker before starting its replacement, and the replacement cannot
 schedule; only the Pending pod's event says why. Fix: find the reason, then remove the resource change
-or add a worker first (Step 29):
+or add a worker first (Step 30):
 
 ```bash run id=c-worker-pending when=manual
 kubectl get pods -n kagent -l ate.dev/worker-pool=kagent-default -o wide 2>/dev/null || kubectl get pods -n kagent | grep kagent-default
@@ -819,7 +829,7 @@ upgrade, which still expected the bundled login's tokens (inferred). Fix: run `f
 
 **C.17 Keycloak never becomes ready.** *Observed during discovery.* Cause: the realm Secret is empty
 or still has placeholders, because the render produced nothing. Fix: check it, then recreate it with
-Step 23's `keycloak-realm` block (delete the `keycloak` namespace first):
+Step 24's `keycloak-realm` block (delete the `keycloak` namespace first):
 
 ```bash run id=c-realm-check when=manual
 REALM=$(kubectl get secret keycloak-realm -n keycloak -o jsonpath='{.data.realm\.json}' | base64 --decode)
@@ -828,7 +838,7 @@ echo "size: $(printf '%s' "$REALM" | wc -c | tr -d ' ') bytes, placeholders left
 
 **C.18 Browser sign-in fails, or the controller rejects every token.** *Observed during discovery.*
 Cause: the issuer name does not resolve to the same Keycloak from your browser and from inside the
-cluster, so the two disagree on `iss` (A.0). Fix: re-run Step 23's `coredns-keycloak-rewrite` and
+cluster, so the two disagree on `iss` (A.0). Fix: re-run Step 24's `coredns-keycloak-rewrite` and
 `keycloak-forward` blocks; the second prints the issuer from both sides, and the two lines must be
 identical.
 
@@ -862,10 +872,10 @@ curl -sS -o /dev/null -w "add ${KC_USER} to ${KC_GROUP}: HTTP %{http_code}\n" -X
   -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/users/${USER_ID}/groups/${GROUP_ID}"
 ```
 
-**C.21 The kagent upgrade in Step 23 fails with `Progress deadline exceeded`, and the new
+**C.21 The kagent upgrade in Step 24 fails with `Progress deadline exceeded`, and the new
 controller pod crash-loops with `OIDC client secret must not be empty`.** *Reproduced.* Cause: the
 client secret was exported in another shell, so its Secret was created empty. Fix: read the secrets
-back from the realm (Step 23's `step-23-read-back-secrets` block), recreate the Secret, and let the
+back from the realm (Step 24's `step-23-read-back-secrets` block), recreate the Secret, and let the
 controller restart:
 
 ```bash run id=c-oidc-secret-recreate when=manual
@@ -881,14 +891,14 @@ forwards
 }
 ```
 
-Re-running Step 23's `helm-kagent-oidc` block afterwards brings Helm's record of the release back to
+Re-running Step 24's `helm-kagent-oidc` block afterwards brings Helm's record of the release back to
 `deployed`.
 
 **C.22 The Keycloak pod stays in `ContainerCreating`, pulling its image, long after the timeout.**
 *Observed while verifying this guide, after the host slept mid-pull.* Cause: the image pull stalled
 and did not resume. Fix: delete the pod so the pull starts again, and forward to the new pod: the
 old port-forward died with the old pod. Keycloak re-imports the realm when it starts (A.1), so re-run
-Step 23's `keycloak-enable-kagent-cli` block afterwards:
+Step 24's `keycloak-enable-kagent-cli` block afterwards:
 
 ```bash run id=c-keycloak-repull when=manual
 kubectl delete pod -n keycloak -l app=keycloak

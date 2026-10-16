@@ -32,7 +32,7 @@ secrets come from you. No block prints them.
 
 ## UI passwords
 
-Step 23 creates three users to sign in to the UI as: `admin`, `writer` and `reader`. `run.sh` points
+Step 24 creates three users to sign in to the UI as: `admin`, `writer` and `reader`. `run.sh` points
 the guide at `auto-build/.env.local` for their passwords (`KAGENT_UI_CREDENTIALS_FILE`): if
 `KAGENT_ADMIN_PASSWORD`, `KAGENT_WRITER_PASSWORD` or `KAGENT_READER_PASSWORD` is already set,
 there or in your environment, it is used; otherwise the guide generates it and appends it to that
