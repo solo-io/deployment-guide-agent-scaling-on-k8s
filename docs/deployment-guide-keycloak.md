@@ -1518,8 +1518,9 @@ trace_spans "$CONV"
 ```
 
 Two traces, one per turn of Step 11. In each, the agent's `invoke_agent` span holds its
-`generate_content` span, the model call, and the gateway's `POST /v1/messages/*` span and its
-`agw.ai.budgets.outcome` child carry the same trace ID. The runtime decides which spans a turn has:
+`generate_content` span, the model call, and the gateway's `POST /v1/messages/*` span carries the
+same trace ID. Once Step 22 adds a budget, the gateway's span gains an `agw.ai.budgets.outcome`
+child with the budget's decision and debit. The runtime decides which spans a turn has:
 
 | Runtime | Spans per turn | Seen in |
 |---|---|---|
@@ -1550,7 +1551,7 @@ printf '\000\000\000\000\046\052\044%s' "$CONV" \
   | curl -sS --max-time 30 -X POST "http://127.0.0.1:18085/api/rpc.kagent.solo.io.TracingAPI/ListChatTraces" \
       -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/grpc-web+proto' -H 'X-Grpc-Web: 1' \
       --data-binary @- \
-  | LC_ALL=C tr -c '[:print:]' '\n' | grep -E '^grpc-status|^[0-9a-f]{32}$' | sort | uniq -c
+  | LC_ALL=C tr -c '[:print:]' '\n' | grep -oE 'grpc-status: [0-9]+|[0-9a-f]{32}' | sort | uniq -c
 kill "$TRACE_PF"
 ```
 
@@ -1560,8 +1561,8 @@ kill "$TRACE_PF"
 (pending)
 ```
 
-Each 32-character line is a trace ID the API returned for the session, and `grpc-status: 0` is
-success. The request carries field 5 (`conversation_id`) of `ListChatTracesRequest`, framed by
+Each 32-character line is a trace ID the API returned for the session, with how often it appears in
+the response, and `grpc-status: 0` is success. The request carries field 5 (`conversation_id`) of `ListChatTracesRequest`, framed by
 hand like Step 15's delete.
 
 The gateway's own access log records the same trace ID for the model call, which is how a gateway
