@@ -99,8 +99,6 @@ auto-build/
   check-paste.py                 Pastes every block into interactive zsh and bash and reports breaks
   demo-ui.sh                     Brings the UI back up on a cluster the guide built
   README.md                      Credentials, flags and how it works
-DECISIONS.md                     Why settled choices were settled, so they are not reopened
-LESSONS.md                       What turned out to be true about the products, with versions
 ```
 
 Product versions are not duplicated here. They are pinned in the environment setup block at the
