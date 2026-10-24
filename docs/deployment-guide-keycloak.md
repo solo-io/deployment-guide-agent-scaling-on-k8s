@@ -249,7 +249,7 @@ declare one agent, and prove its first answer went through the gateway.
 sessions each run in their own sandbox, and whose every model call is authenticated and
 recorded by one gateway.
 
-**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-16 03:02 to 03:40 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 17 of 17. Every output block in this guide comes from the last run, under bash.
+**Verified on:** not yet certified on this release. Every output block in this guide comes from runs on 2026-10-24 on the versions in Version support, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), with every block executed verbatim by `auto-build/run.sh` from an empty directory outside the repository, under bash; Validate passed 18 of 18. The certification runs, in document order and normally, under bash and under zsh, are still to do.
 
 ### Step 1: Create the cluster
 
@@ -1378,7 +1378,7 @@ runtime.
 **What you will have that you did not have before:** a working model of the agent lifecycle on this
 platform, and the commands to see each stage of it on your own cluster.
 
-**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-16 03:02 to 03:40 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 17 of 17. Every output block in this guide comes from the last run, under bash.
+**Verified on:** not yet certified on this release. Every output block in this guide comes from runs on 2026-10-24 on the versions in Version support, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), with every block executed verbatim by `auto-build/run.sh` from an empty directory outside the repository, under bash; Validate passed 18 of 18. The certification runs, in document order and normally, under bash and under zsh, are still to do.
 
 ### Step 10: How an agent becomes actors
 
@@ -1972,7 +1972,7 @@ of the UI and API authenticated, with roles deciding who can chat.
 Each step says which runtime it shows: the kagent Go ADK runtime (agent `assistant`) or Claude Code
 (agent `assistant-claude-code`, from Step 16).
 
-**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-16 03:02 to 03:40 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 17 of 17. Every output block in this guide comes from the last run, under bash.
+**Verified on:** not yet certified on this release. Every output block in this guide comes from runs on 2026-10-24 on the versions in Version support, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), with every block executed verbatim by `auto-build/run.sh` from an empty directory outside the repository, under bash; Validate passed 18 of 18. The certification runs, in document order and normally, under bash and under zsh, are still to do.
 
 ### Step 17: One gVisor sandbox per session
 
@@ -3603,7 +3603,7 @@ re-measure them on your own nodes, and a way to change the worker pool without l
 The steps you run here make five model calls in total and finish in a few minutes. The larger figures
 are reference measurements from longer runs on the same reference environment, labelled as such.
 
-**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-16 03:02 to 03:40 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 17 of 17. Every output block in this guide comes from the last run, under bash.
+**Verified on:** not yet certified on this release. Every output block in this guide comes from runs on 2026-10-24 on the versions in Version support, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), with every block executed verbatim by `auto-build/run.sh` from an empty directory outside the repository, under bash; Validate passed 18 of 18. The certification runs, in document order and normally, under bash and under zsh, are still to do.
 
 ### Step 26: A pod per session, a pod per agent, or Substrate
 
@@ -3949,7 +3949,7 @@ MCP server, the fences, and another user's access.
 **What you will have that you did not have before:** one pass that tells you whether the whole
 platform still does what each step said it would, and which step to go back to when it does not.
 
-**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-16 03:02 to 03:40 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 17 of 17. Every output block in this guide comes from the last run, under bash.
+**Verified on:** not yet certified on this release. Every output block in this guide comes from runs on 2026-10-24 on the versions in Version support, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), with every block executed verbatim by `auto-build/run.sh` from an empty directory outside the repository, under bash; Validate passed 18 of 18. The certification runs, in document order and normally, under bash and under zsh, are still to do.
 
 ### Step 31: Drive one session through every control
 
@@ -3981,7 +3981,7 @@ record "Step 24" "API call with no token" "HTTP $(curl -sS -o /dev/null -w '%{ht
   "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/deployment-helper" -H 'Content-Type: application/json' -d '{}')" '^HTTP 401$'
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 PASS  Step 24       Keycloak token for writer: issued
@@ -4003,10 +4003,10 @@ record "Step 12" "Spans in the turn's trace" "$(trace_spans "$VALIDATE_CONV" \
   '^invoke_agent=1 generate_content=[1-9][0-9]* execute_tool=1 gateway POST=[1-9]'
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-PASS  Steps 8, 21   Turn using the model and the MCP tool: TASK_STATE_COMPLETED The deployment code for the billing service is **K7-teal-otter-0429**. 
+PASS  Steps 8, 21   Turn using the model and the MCP tool: TASK_STATE_COMPLETED The deployment code for the billing service is **K7-teal-otter-0429**.
 PASS  Steps 10, 11  First restore of the session's actor: Restore timing breakdown golden/full
 PASS  Step 11       Actor state after the turn: ACTOR_STATE_SUSPENDED
 PASS  Step 12       Spans in the turn's trace: invoke_agent=1 generate_content=2 execute_tool=1 gateway POST=7
@@ -4024,7 +4024,7 @@ record "Step 20" "A destination outside the egress policy" "$(sandbox_exec "$VAL
 kubectl-ate suspend actor "session-${VALIDATE_CONV}" -a kagent >/dev/null
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 PASS  Step 17       Kernel the agent sees: 4.19.0-gvisor
@@ -4056,7 +4056,7 @@ record "Step 22" "Budget enforcement policy" "$(kubectl get enterpriseagentgatew
   -o jsonpath='{range .status.ancestors[*].conditions[*]}{.type}={.status} {end}')" 'Accepted=True.*Attached=True'
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 PASS  Steps 6, 7, 9  Model call at the gateway, from Substrate egress: http.status=200
@@ -4065,22 +4065,27 @@ PASS  Step 22       Token metric series attributed to team-agents: 4
 PASS  Step 22       Budget enforcement policy: Accepted=True Attached=True
 ```
 
-**The fences and the other user.** A pod that is not supposed to reach the gateway or the snapshot
-store, and a reader trying to continue the writer's session:
+**The fences and the other users.** A pod that is not supposed to reach the gateway or the snapshot
+store, a reader trying to continue the writer's session, and a reader trying to delete an agent:
 
 ```bash run id=step-30-fences
 record "Step 7" "Another pod reaching the gateway" "$(kubectl run validate-fence -n default --rm -i --restart=Never --image=busybox:1.36 --quiet -- \
   sh -c 'wget -T 8 -O /dev/null http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages 2>&1 | tail -1' < /dev/null)" 'timed out'
 record "Step 23" "Another pod reaching the snapshot store" "$(snapshot_ls "kagent/" | tail -1)" '[Tt]imeout'
 record "Step 25" "Reader continuing the writer's session" "$(KAGENT_USER=reader kagent_send deployment-helper "hello" "$VALIDATE_CONV" | tr '\t' ' ')" '^REFUSED'
+record "Step 24" "Reader deleting an agent" "$(printf '\000\000\000\000\031\012\027\012\006kagent\022\015no-such-agent' \
+  | curl -sS -D - -o /dev/null --max-time 30 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/kagent.api.v1.AgentService/DeleteAgent" \
+      -H "Authorization: Bearer $(KAGENT_USER=reader kagent_token)" -H 'Content-Type: application/grpc-web+proto' -H 'X-Grpc-Web: 1' --data-binary @- \
+  | LC_ALL=C tr -d '\r' | grep -i '^grpc-message:' | cut -d' ' -f2-)" '^Not authorized$'
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 PASS  Step 7        Another pod reaching the gateway: wget: download timed out
 PASS  Step 23       Another pod reaching the snapshot store: Connect timeout on endpoint URL: "http://rustfs.ate-system.svc:9000/ate-snapshots?list-type=2&prefix=kagent%2F&encoding-type=url"
-PASS  Step 25       Reader continuing the writer's session: REFUSED permission denied
+PASS  Step 25       Reader continuing the writer's session: REFUSED task not found
+PASS  Step 24       Reader deleting an agent: Not authorized
 ```
 
 ### Step 32: Map each result to the step that set it
@@ -4091,7 +4096,7 @@ FAILED=$(printf '%s' "$VALIDATE_RESULTS" | grep -c '^FAIL' || true)
 echo "checks: $(printf '%s' "$VALIDATE_RESULTS" | grep -c '|' || true), failed: ${FAILED}"
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 PASS  set in Step 24       Keycloak token for writer
@@ -4111,7 +4116,8 @@ PASS  set in Step 22       Budget enforcement policy
 PASS  set in Step 7        Another pod reaching the gateway
 PASS  set in Step 23       Another pod reaching the snapshot store
 PASS  set in Step 25       Reader continuing the writer's session
-checks: 17, failed: 0
+PASS  set in Step 24       Reader deleting an agent
+checks: 18, failed: 0
 ```
 
 Every check names the step that set it up, so a `FAIL` sends you back to one place. Read them in the
@@ -4121,14 +4127,15 @@ order a turn passes through the platform:
 |---|---|---|---|
 | 1 | The caller signs in to Keycloak and the controller verifies the token | Step 24 | Keycloak token, API call with no token |
 | 2 | Only the session's creator can continue it | Step 25 | Reader continuing the writer's session |
-| 3 | Substrate restores the session's actor from the agent's golden image | Steps 10, 11 | First restore |
-| 4 | The agent runs in its own gVisor sandbox | Step 17 | Kernel the agent sees |
-| 5 | The agent holds a placeholder, not a key | Step 19 | Model credential, consumer key in the filesystem |
-| 6 | Substrate's egress gateway allows only the destinations in the policy | Step 20 | A destination outside the policy |
-| 7 | Substrate's egress gateway injects the consumer key and sends the call to the enterprise gateway, which nothing else can reach | Steps 6, 7, 9 | Model call at the gateway, another pod reaching the gateway |
-| 8 | The enterprise gateway attributes the tokens and enforces the team's budget | Step 22 | Token metrics, budget policy |
-| 9 | Tool calls reach the MCP server through the gateway, with the server's credential added there | Step 21 | Tool call at the MCP server |
-| 10 | When the turn ends, the session is checkpointed to the fenced snapshot store and suspended | Steps 11, 23 | Actor state after the turn, another pod reaching the store |
+| 3 | Only the groups the policies allow can change agents | Step 24 | Reader deleting an agent |
+| 4 | Substrate restores the session's actor from the agent's golden image | Steps 10, 11 | First restore |
+| 5 | The agent runs in its own gVisor sandbox | Step 17 | Kernel the agent sees |
+| 6 | The agent holds a placeholder, not a key | Step 19 | Model credential, consumer key in the filesystem |
+| 7 | Substrate's egress gateway allows only the destinations in the policy | Step 20 | A destination outside the policy |
+| 8 | Substrate's egress gateway injects the consumer key and sends the call to the enterprise gateway, which nothing else can reach | Steps 6, 7, 9 | Model call at the gateway, another pod reaching the gateway |
+| 9 | The enterprise gateway attributes the tokens and enforces the team's budget | Step 22 | Token metrics, budget policy |
+| 10 | Tool calls reach the MCP server through the gateway, with the server's credential added there | Step 21 | Tool call at the MCP server |
+| 11 | When the turn ends, the session is checkpointed to the fenced snapshot store and suspended | Steps 11, 23 | Actor state after the turn, another pod reaching the store |
 
 ### What you built
 
@@ -4147,8 +4154,8 @@ isolation an agent needs:
   every token and enforces budgets, and nothing else in the cluster can reach it.
 - **Session data** sits in a snapshot store only atelet and ate-api can reach, under credentials
   you generated, and in a PostgreSQL that accepts logins only by workload certificate.
-- **Keycloak** authenticates every caller of the UI and API, and its groups decide who can chat and
-  who can only read.
+- **Keycloak** authenticates every caller of the UI and API. Policies on its groups decide who can see
+  and change agents and their configuration; who can sign in decides who can talk to them.
 
 What it does not do yet is in Before production.
 
@@ -4172,26 +4179,28 @@ curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/cl
 
 - **Treat the snapshot store as holding every session in readable form.** Each snapshot is the
   session's data directory, its database included, compressed, not encrypted (Step 18). On this
-  release a session's memory is not saved, but each agent's golden snapshot is a full memory image. Keep the NetworkPolicy from Step 23, keep the credentials out of anything you
-  commit, and if you use an external store, turn on the bucket's default encryption. An external
+  release a session's memory is not saved, but each agent's golden snapshot is a full memory image.
+  Keep the NetworkPolicy from Step 23, keep the credentials out of anything you commit, and if you
+  use an external store, turn on the bucket's default encryption. An external
   store can be wired for atelet but not for ate-api through the chart (Steps 14 and 23).
 - **Size storage for the sessions you keep.** On this release each suspended session takes 28 to
   32 KiB of the snapshot store, 16 to 175 KB of PostgreSQL and 40 KiB of node disk, and each agent
   1.7 MB of the store (Step 28); nothing removes a session that is never resumed or deleted, and
-  nothing removes a node directory at all. Set the size at install (`rustfs.storageSize`, Step 5): changing
-  it later needs a storage class that supports volume expansion, and an upgrade on one that does not
-  fails and leaves the release `failed`. What Substrate does when the store is full was not tested.
+  nothing removes a node directory at all. Set the size at install (`rustfs.storageSize`, Step 5):
+  changing it later needs a storage class that supports volume expansion, and an upgrade on one that
+  does not fails and leaves the release `failed`. What Substrate does when the store is full was not tested.
 - **Decide on content capture per runtime, and keep it off unless you need it.**
   `config.runtimeDefaults.telemetry.captureContent: true` stores the Claude Code runtime's prompt and
   reply on its `invoke_agent` span, up to `maxCaptureBytes` (16 KiB by default). It has no effect on
   the kagent runtime, which stores no prompt or reply text either way. Both store every MCP tool
   call's arguments and response regardless (Step 21). Whatever is captured, every signed-in user can
-  read (Step 25).
+  read (Step 25). Observed on 1.0.0-alpha10; the setting exists on this release and was not
+  re-checked.
 - **Treat traces as readable by every signed-in user.** kagent's tracing API answers any signed-in
   user for any session, whatever the policies say (Steps 12 and 25), and no setting narrows it on
   this release.
 - **Size ClickHouse for traces, and set how long they are kept.** The collector keeps traces 90
-  days (`ttl: 2160h` in its ClickHouse exporter). On this release a plain turn produced 4 spans with
+  days (`ttl: 2160h` in its ClickHouse exporter). On 1.0.0-alpha10 a plain turn produced 4 spans with
   the gateway's, a turn with one MCP tool call 18, and ClickHouse grew about 2.2 KB compressed, 11 KB
   uncompressed, per turn, over a small sample with short prompts: real prompts and tool results are
   larger. At 10,000 turns a day that is 2 to 10 GB over 90 days (**projected**). The bundled
@@ -4210,8 +4219,9 @@ curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/cl
 - **Rotate the CA pools before they expire.** They are valid for one year from Step 3 and nothing
   rotates them; when they expire, nothing issued from them validates. Rotation replaces the pools and
   every trust root issued from them, and restarts PostgreSQL, every Substrate component, the workers
-  and the controller; the order matters (Attachment C.10). Verified on this release: new sessions and
-  sessions suspended before the rotation both work after it, with their context.
+  and the controller; the order matters (Attachment C.10). Verified on 1.0.0-alpha10, not repeated on
+  this release: new sessions and sessions suspended before the rotation both work after it, with
+  their context.
 - **Restart the worker pool after a node restarts.** Turns on a restarted node are refused until its
   workers are restarted and registered again (Attachment C.23).
 - **Plan node disk and inodes for actor directories.** Every session ever placed on a node
