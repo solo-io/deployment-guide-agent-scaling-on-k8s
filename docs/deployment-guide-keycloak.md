@@ -72,21 +72,23 @@ every version, chart and image below is part of that set:
 
 | Component | Version |
 |---|---|
-| kagent-enterprise (CRD and controller charts) | 1.0.0-alpha10, built from kagent v1.0.0-alpha13 |
-| Agent Substrate (`substrate-crds`, `substrate-podcert` and `substrate` charts, worker image) | 0.5.0-alpha3-e492046 |
+| kagent-enterprise (CRD and controller charts) | 1.0.0-alpha11, built from kagent v1.0.0-alpha14 |
+| Agent Substrate (`substrate-crds`, `substrate-podcert` and `substrate` charts, worker image) | 0.5.0-alpha4-da3c2e5 |
 | kubectl-ate | v0.5.0-alpha2 |
-| kagent runtime images (`golang-adk`, `claude-harness`) | 1.0.0-alpha13, pinned by digest |
+| kagent runtime images (`golang-adk`, `claude-harness`) | 1.0.0-alpha14, pinned by digest |
 | PostgreSQL | 18.6 (`postgres:18.6-alpine3.23`), pinned by digest |
 | Solo Enterprise for agentgateway | v2026.7.1 |
 | Kubernetes | 1.35.0 on kind 0.32.0 |
 
 Do not mix versions across this set. The three Substrate charts and the worker image come from one
-Substrate release, kubectl-ate from the open-source Substrate release it is built on, and the runtime
-images are the ones this kagent release pins.
+Substrate release. kubectl-ate comes from the open-source Substrate release the kagent controller is
+built against, which is why its number differs from the charts'. The runtime images come from the kagent release
+this kagent-enterprise release is built from.
 
 **Fresh install only.** This guide installs this set on a new cluster. It does not cover upgrading
 an earlier release in place: the 1.0.0-alpha8 charts deployed PostgreSQL and carried Substrate's
-CRDs, and the 1.0.0-alpha10 charts do neither. An in-place upgrade was not tested.
+CRDs, and the 1.0.0-alpha11 charts log in to PostgreSQL as two users where 1.0.0-alpha10 used one.
+An in-place upgrade was not tested.
 
 ## Environment setup
 
@@ -106,8 +108,8 @@ Then set these. Every command below uses them.
 
 ```bash run id=environment-setup-env
 # Pinned versions
-export KAGENT_VERSION=1.0.0-alpha10
-export SUBSTRATE_VERSION=0.5.0-alpha3-e492046
+export KAGENT_VERSION=1.0.0-alpha11
+export SUBSTRATE_VERSION=0.5.0-alpha4-da3c2e5
 export KUBECTL_ATE_VERSION=v0.5.0-alpha2
 export AGENT_GATEWAY_VERSION=v2026.7.1
 export GATEWAY_API_VERSION=v1.6.1
@@ -118,10 +120,10 @@ export KIND_NODE_IMAGE=kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f578
 
 # The worker image Substrate runs sandboxes on, and the agent runtime images.
 # Substrate refuses an image that is not pinned: a changed image invalidates snapshots.
-export WORKER_IMAGE=us-docker.pkg.dev/solo-public/substrate-enterprise/ateom-gvisor:v0.5.0-alpha3-e492046@sha256:b06f73fa23541d05f866ec250fa9144bfa8ff6753cad7b0c15d6ac4af71cac50
-export RUNTIME_IMAGE=ghcr.io/kagent-dev/kagent/golang-adk:1.0.0-alpha13@sha256:ae01c3a6d7e0ed2e044253a26abbfb1a9426f3176363842ca9a954762c274d36
+export WORKER_IMAGE=us-docker.pkg.dev/solo-public/substrate-enterprise/ateom-gvisor:v0.5.0-alpha4-da3c2e5@sha256:d9128b01f543a0375307521872568070b48e5ed88a9a77b9b6ae25f536b81426
+export RUNTIME_IMAGE=ghcr.io/kagent-dev/kagent/golang-adk:1.0.0-alpha14@sha256:eb1b0c7f635f31d464cff7cf212275f2642057a629ed20b39661e9f644f71f21
 # The Claude Code runtime, used in Step 16. Same kagent release as RUNTIME_IMAGE.
-export CLAUDE_HARNESS_IMAGE=ghcr.io/kagent-dev/kagent/claude-harness:1.0.0-alpha13@sha256:ceaf7caa7366b96c11cb85ad0bad435a35fcd2704c657b895ee3e73978045db8
+export CLAUDE_HARNESS_IMAGE=ghcr.io/kagent-dev/kagent/claude-harness:1.0.0-alpha14@sha256:b33b9e3ab90bcba19f0ec719a249b35321cf7508f90cfe7fe1af550f09c9310c
 
 # The database kagent and Substrate share, Step 4.
 export POSTGRES_IMAGE=postgres:18.6-alpine3.23@sha256:885cf05d376c7cf27afef02073e6bdac3841252537f16e244fd1c1e6a7c99fb1
@@ -453,8 +455,10 @@ echo "issuer: ${ISSUER}"
 
 Install the pod certificate controller. It issues every Substrate pod's certificate from the pools
 above, and it also issues database logins: `postgresClients` maps a ServiceAccount to a PostgreSQL
-user, so a pod running as `kagent/kagent-controller` gets a certificate that PostgreSQL in Step 4
-accepts as `kagent_user`. Substrate's own logins (ate-api, as `substrate_owner_user` and
+user. The kagent controller logs in as two users, `kagent_owner_user` to create and migrate its tables
+and `kagent_readwrite_user` for everything else, so its ServiceAccount, `kagent/kagent-controller`, is
+mapped twice. The pod asks for each certificate by user name, and PostgreSQL in Step 4 accepts it as
+that user only. Substrate's own logins (ate-api, as `substrate_owner_user` and
 `substrate_readwrite_user`) are mapped by the chart's defaults.
 
 ```bash run id=helm-substrate-podcert
@@ -464,12 +468,13 @@ helm upgrade -i substrate-podcert \
   --namespace podcertificate-controller-system \
   -f - <<EOF
 postgresClients:
-  - kagent/kagent-controller=kagent_user
+  - kagent/kagent-controller=kagent_owner_user
+  - kagent/kagent-controller=kagent_readwrite_user
 EOF
 kubectl rollout status deployment/podcertificate-controller -n podcertificate-controller-system --timeout=300s
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 Release "substrate-podcert" does not exist. Installing it now.
@@ -494,19 +499,23 @@ it against that pool's trust bundle and maps it to a user, and its own serving c
 from the service DNS pool.
 
 The manifest and the role scripts are upstream's, fetched at the versions this guide pins and
-checked against their digests. kagent-enterprise also keeps tables in a schema of its own,
-`enterprise`, owned by the same role as kagent's; the last two statements create it.
+checked against their digests. Each product gets an owner role, which owns its schema and runs its
+migrations, and a read/write role, which can change rows but not tables. kagent-enterprise also keeps
+tables in a schema of its own, `enterprise`, owned by kagent's owner role. The statements after the
+scripts create it and give kagent's read/write role the same row access there as in kagent's schema,
+which is what kagent-enterprise's own database setup does. With traces kept in ClickHouse, as Step 5
+configures them, the controller creates no tables there yet; the grants cover any it does create.
 
 ```bash run id=postgres-install
 PG_SETUP=$(mktemp -d)
-KAGENT_SRC=https://raw.githubusercontent.com/kagent-dev/kagent/v1.0.0-alpha13/go/core/cli/internal/commands
+KAGENT_SRC=https://raw.githubusercontent.com/kagent-dev/kagent/v1.0.0-alpha14/go
 SUBSTRATE_SRC=https://raw.githubusercontent.com/kagent-dev/substrate/v0.5.0-alpha2/pkg/postgressetup
-curl -sSLf -o "$PG_SETUP/postgres.yaml" "$KAGENT_SRC/bundled_postgres.yaml"
-curl -sSLf -o "$PG_SETUP/kagent.sql" "$KAGENT_SRC/bundled_postgres.sql"
+curl -sSLf -o "$PG_SETUP/postgres.yaml" "$KAGENT_SRC/core/cli/internal/commands/bundled_postgres.yaml"
+curl -sSLf -o "$PG_SETUP/kagent.sql" "$KAGENT_SRC/core/pkg/postgressetup/setup.sql"
 curl -sSLf -o "$PG_SETUP/substrate.sql" "$SUBSTRATE_SRC/setup.sql"
 ( cd "$PG_SETUP" && shasum -a 256 -c - ) <<EOF
-dc02456aa1fb370a9dd0ab468087f5b5105420bfce7360a0ae358383a3bc2b39  postgres.yaml
-7ce064fd4e5f5f55a470e86f45db979247bacd887a09d881112051a9695f46be  kagent.sql
+58947780202d0b5885fe26175627a7e0d7652313cc2bdd9a264ad80b3da724bd  postgres.yaml
+ed02e38bd6ae05c6ac9b374610d3728bdb9c8749e238e358b92a146cd1184f59  kagent.sql
 137264dea1a39db1a0692da8c24bd49d5272dae6123bab3cec1d667fdb8ee37e  substrate.sql
 EOF
 sed -e 's|${NAMESPACE}|kagent|g' -e 's|${SUBSTRATE_NAMESPACE}|ate-system|g' \
@@ -516,9 +525,19 @@ kubectl rollout status deployment/kagent-postgresql -n kagent --timeout=300s
 { echo "BEGIN;"; cat "$PG_SETUP/kagent.sql" "$PG_SETUP/substrate.sql"
   echo "CREATE SCHEMA IF NOT EXISTS enterprise AUTHORIZATION kagent_owner;"
   echo "REVOKE ALL ON SCHEMA enterprise FROM PUBLIC;"
+  echo "GRANT USAGE ON SCHEMA enterprise TO kagent_readwrite;"
+  echo "ALTER DEFAULT PRIVILEGES FOR ROLE kagent_owner IN SCHEMA enterprise GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO kagent_readwrite;"
+  echo "ALTER DEFAULT PRIVILEGES FOR ROLE kagent_owner IN SCHEMA enterprise GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO kagent_readwrite;"
+  echo "ALTER DEFAULT PRIVILEGES FOR ROLE kagent_owner IN SCHEMA enterprise GRANT EXECUTE ON ROUTINES TO kagent_readwrite;"
+  echo "ALTER DEFAULT PRIVILEGES FOR ROLE kagent_owner IN SCHEMA enterprise GRANT USAGE ON TYPES TO kagent_readwrite;"
   echo "COMMIT;"
 } | kubectl exec -i -n kagent deployment/kagent-postgresql -c postgresql -- \
     psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet -U postgres -d kagent \
+      --set=kagent_schema=kagent \
+      --set=kagent_owner_role=kagent_owner --set=kagent_owner_user=kagent_owner_user \
+      --set=kagent_owner_password= \
+      --set=kagent_readwrite_role=kagent_readwrite --set=kagent_readwrite_user=kagent_readwrite_user \
+      --set=kagent_readwrite_password= \
       --set=substrate_schema=substrate \
       --set=substrate_owner_role=substrate_owner --set=substrate_owner_user=substrate_owner_user \
       --set=substrate_owner_password= \
@@ -527,7 +546,7 @@ kubectl rollout status deployment/kagent-postgresql -n kagent --timeout=300s
 rm -rf "$PG_SETUP"
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 postgres.yaml: OK
@@ -537,17 +556,20 @@ configmap/kagent-postgresql serverside-applied
 persistentvolumeclaim/kagent-postgresql serverside-applied
 deployment.apps/kagent-postgresql serverside-applied
 service/kagent-postgresql serverside-applied
-secret/kagent-postgres serverside-applied
+secret/kagent-postgres-owner serverside-applied
+secret/kagent-postgres-readwrite serverside-applied
 secret/substrate-postgres-readwrite serverside-applied
 secret/substrate-postgres-owner serverside-applied
 Waiting for deployment "kagent-postgresql" rollout to finish: 0 of 1 updated replicas are available...
 deployment "kagent-postgresql" successfully rolled out
 ```
 
-`shasum` prints `OK` for each file. Anything else, stop. The manifest also creates the three
-Secrets the charts read their connection strings from: `kagent-postgres` in `kagent`, and
-`substrate-postgres-readwrite` and `substrate-postgres-owner` in `ate-system`. They hold no
-password, only the user, the address and where the certificate is mounted. Every script tolerates
+`shasum` prints `OK` for each file. Anything else, stop. The manifest also creates the four
+Secrets the charts read their connection strings from: `kagent-postgres-owner` and
+`kagent-postgres-readwrite` in `kagent`, and `substrate-postgres-readwrite` and
+`substrate-postgres-owner` in `ate-system`. They hold no password, only the user, the address and
+where the certificate is mounted. The passwords set above are empty for the same reason: these users
+log in only by certificate. Every script tolerates
 an existing database, so the block is safe to re-run.
 
 Check who owns what, and how PostgreSQL authenticates:
@@ -555,22 +577,33 @@ Check who owns what, and how PostgreSQL authenticates:
 ```bash run id=step-4-postgres-check
 kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U postgres -d kagent -At -c \
   "select nspname || ' owned by ' || pg_get_userbyid(nspowner) from pg_namespace where nspname in ('kagent','substrate','enterprise') order by 1"
+kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U postgres -d kagent -At -c \
+  "select 'enterprise ' || defaclobjtype::text || ' ' || array_to_string(defaclacl, ',') from pg_default_acl d join pg_namespace n on n.oid = d.defaclnamespace where n.nspname = 'enterprise' order by 1"
 kubectl get configmap kagent-postgresql -n kagent -o jsonpath='{.data.pg_hba\.conf}'
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 enterprise owned by kagent_owner
 kagent owned by kagent_owner
 substrate owned by substrate_owner
+enterprise S kagent_readwrite=rwU/kagent_owner
+enterprise T kagent_readwrite=U/kagent_owner
+enterprise f kagent_readwrite=X/kagent_owner
+enterprise r kagent_readwrite=arwd/kagent_owner
 local all all trust
 hostssl all postgres all reject
-hostssl kagent kagent_user,substrate_owner_user,substrate_readwrite_user all cert
+hostssl kagent kagent_owner_user,kagent_readwrite_user,substrate_owner_user,substrate_readwrite_user all cert
 ```
 
+The four `enterprise` lines are the default grants: whatever `kagent_owner` creates in that schema,
+`kagent_readwrite` can use. On tables (`r`) it can insert, select, update and delete (`arwd`); on
+sequences (`S`) select, update and use them (`rwU`); it can execute routines (`f`, `X`) and use types
+(`T`, `U`). It can create nothing.
+
 Inside the pod, over its socket, `postgres` is trusted; that is how the block above ran its
-scripts. Over the network, `postgres` is refused and the three product users are accepted only
+scripts. Over the network, `postgres` is refused and the four product users are accepted only
 with a certificate (`cert`). Anyone who can `kubectl exec` into this pod is a database superuser,
 so restrict `pods/exec` in `kagent`.
 
@@ -644,7 +677,7 @@ kubectl get pvc rustfs-data -n ate-system -o jsonpath='snapshot store volume: {.
 kubectl-ate get actors -A
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 deployment.apps/ate-api-server condition met
@@ -654,16 +687,16 @@ deployment.apps/atenet-router condition met
 deployment.apps/k8s-credential-provider condition met
 deployment.apps/rustfs condition met
 daemon set "atelet" successfully rolled out
-NAME                                       READY   STATUS      RESTARTS   AGE
-ate-api-server-97cfff689-l76hw             1/1     Running     0          44s
-ate-api-server-97cfff689-wdpvf             1/1     Running     0          44s
-ate-controller-65dd9d7749-wgdgc            1/1     Running     0          44s
-atelet-h9pq9                               1/1     Running     0          44s
-atenet-egress-68b8df7b94-qd42m             1/1     Running     0          44s
-atenet-router-8f46bdc9d-w9csr              1/1     Running     0          44s
-k8s-credential-provider-847cdc86fc-44d2c   1/1     Running     0          44s
-rustfs-7b5d94bc9b-j8wwn                    1/1     Running     0          44s
-rustfs-bucket-init-b6kw2                   0/1     Completed   0          44s
+NAME                                      READY   STATUS      RESTARTS   AGE
+ate-api-server-5494df4d67-nj826           1/1     Running     0          46s
+ate-api-server-5494df4d67-sjptc           1/1     Running     0          46s
+ate-controller-7d9c95cd77-rlfcj           1/1     Running     0          46s
+atelet-vcshk                              1/1     Running     0          47s
+atenet-egress-68b8df7b94-dntpj            1/1     Running     0          46s
+atenet-router-8f46bdc9d-nqhdh             1/1     Running     0          46s
+k8s-credential-provider-d9f95b69f-t625l   1/1     Running     0          47s
+rustfs-7b5d94bc9b-r4cfm                   1/1     Running     0          47s
+rustfs-bucket-init-z6csk                  0/1     Completed   0          46s
 snapshot store volume: 2Gi requested, 2Gi bound
 ATESPACE   NAME   TEMPLATE   STATE   WORKER POD   WORKER IPS   VERSION   AGE
 ```
@@ -734,9 +767,10 @@ writes to it and no turn is traced. The runtimes get the endpoint in their own c
 kagent adds it to each agent's egress allowlist, so their spans leave through Substrate's egress
 gateway like every other call. Step 12 reads a turn's trace.
 
-`database.postgres.clientCertificate.enabled` mounts the controller's login certificate. The
-connection string comes from the `kagent-postgres` Secret Step 4 created, which is the chart's
-default name. Substrate's address is the chart's default too, `api.ate-system.svc`, which is why
+`database.postgres.clientCertificate.enabled` mounts the controller's two login certificates,
+one for `kagent_owner_user` and one for `kagent_readwrite_user`. The connection strings come from the
+`kagent-postgres-owner` and `kagent-postgres-readwrite` Secrets Step 4 created, which are the chart's
+default names. Substrate's address is the chart's default too, `api.ate-system.svc`, which is why
 the release name and namespace above matter. The controller's settings live under the chart's
 `config:` key on this release; the `controller.substrate.ateApiEndpoint` and `atenetRouterURL`
 keys earlier releases used are ignored without an error.
@@ -756,21 +790,21 @@ kubectl get workerpool -n kagent
 kubectl logs -n kagent deployment/kagent-controller -c controller | grep -o '"state":"[A-Za-z]*"' | sort | uniq -c
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-NAME                                                  READY   STATUS    RESTARTS   AGE
-kagent-clickhouse-shard0-0                            1/1     Running   0          61s
-kagent-controller-6fbc4f94bc-5948d                    2/2     Running   0          61s
-kagent-default-5d55b7f7c9-w2qzl                       1/1     Running   0          61s
-kagent-default-5d55b7f7c9-z6hz7                       1/1     Running   0          61s
-kagent-postgresql-5fb9d7f7d7-qm56v                    2/2     Running   0          2m12s
-kagent-ui-fdfd6754b-kknph                             1/1     Running   0          61s
-kmcp-enterprise-controller-manager-56c598d9d7-68t2f   1/1     Running   0          61s
-solo-enterprise-k8sobjects-658b77f9-kqbd9             1/1     Running   0          61s
-solo-enterprise-telemetry-collector-0                 1/1     Running   0          61s
+NAME                                                 READY   STATUS    RESTARTS      AGE
+kagent-clickhouse-shard0-0                           1/1     Running   0             75s
+kagent-controller-86b94796b-hmjds                    2/2     Running   1 (35s ago)   75s
+kagent-default-577c7bd4d6-9ttsj                      1/1     Running   0             75s
+kagent-default-577c7bd4d6-bf644                      1/1     Running   0             75s
+kagent-postgresql-5fb9d7f7d7-s894n                   2/2     Running   0             3m3s
+kagent-ui-68dbbd8696-62tpm                           1/1     Running   0             75s
+kmcp-enterprise-controller-manager-f4d57d7db-59ptn   1/1     Running   0             75s
+solo-enterprise-k8sobjects-6dd5969c7d-kbv4t          1/1     Running   0             75s
+solo-enterprise-telemetry-collector-0                1/1     Running   0             75s
 NAME             DESIRED   REPLICAS   READY   AGE
-kagent-default   2         2          2       61s
+kagent-default   2         2          2       75s
    1 "state":"Licensed"
    1 "state":"Warning"
 ```
@@ -837,10 +871,11 @@ kubectl wait --for=condition=Programmed --timeout=180s gateway/agentgateway-prox
 kubectl rollout status deployment/agentgateway-proxy -n agentgateway-system --timeout=180s
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 gateway.gateway.networking.k8s.io/agentgateway-proxy condition met
+Waiting for deployment "agentgateway-proxy" rollout to finish: 0 out of 1 new replicas have been updated...
 Waiting for deployment "agentgateway-proxy" rollout to finish: 0 of 1 updated replicas are available...
 deployment "agentgateway-proxy" successfully rolled out
 ```
@@ -1268,10 +1303,10 @@ echo "$TURN"
 export FIRST_CONTEXT=$(echo "$TURN" | cut -f2)
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a142c6-afbf-7eb6-a706-e86246c25bf9	up and running
+TASK_STATE_COMPLETED	01a16f09-da97-7281-93ac-9a8e22e73b9e	up and running
 ```
 
 `TASK_STATE_COMPLETED`, the session's ID, and the reply. An answer alone does not prove the
@@ -1308,13 +1343,13 @@ kubectl logs -n agentgateway-system deployment/agentgateway-proxy --since=10m \
   | tr ' ' '\n' | grep -E '^(route|src.addr|http.status|gen_ai.usage.input_tokens|gen_ai.usage.output_tokens|endpoint)='
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-atenet-egress: 10.244.0.9
+atenet-egress: 10.244.0.17
 route=agentgateway-system/anthropic-messages
 endpoint=api.anthropic.com:443
-src.addr=10.244.0.9:52488
+src.addr=10.244.0.17:42514
 http.status=200
 gen_ai.usage.input_tokens=702
 gen_ai.usage.output_tokens=6
