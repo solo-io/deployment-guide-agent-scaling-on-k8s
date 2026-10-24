@@ -627,10 +627,9 @@ volume now. On kind's storage class a volume cannot grow after install: an upgra
 the size fails with `only dynamically provisioned pvc can be resized and the storageclass that
 provisions the pvc must support resize`, and leaves the release `failed`.
 
-On this release the store holds, per suspended session, 1.4 MB after one turn and 2.2 MB after 20
-(Step 28), and 1.06 MB of golden snapshot per agent. For 500 suspended sessions of up to 20 turns
-across 10 agents: 500 × 2.2 MB + 10 × 1.06 MB = 1.11 GB, more than the chart's 1Gi default.
-`SNAPSHOT_STORE_SIZE` sets 2Gi.
+On this release the store holds, per suspended session, only its data directory: 2.2 KB after two
+turns (Step 13). Each agent's golden snapshot is a memory image of about 2.1 MB, as much as
+about 900 such sessions. `SNAPSHOT_STORE_SIZE` sets 2Gi, twice the chart's 1Gi default.
 
 Install the chart:
 
@@ -688,15 +687,15 @@ deployment.apps/k8s-credential-provider condition met
 deployment.apps/rustfs condition met
 daemon set "atelet" successfully rolled out
 NAME                                      READY   STATUS      RESTARTS   AGE
-ate-api-server-5494df4d67-nj826           1/1     Running     0          46s
-ate-api-server-5494df4d67-sjptc           1/1     Running     0          46s
-ate-controller-7d9c95cd77-rlfcj           1/1     Running     0          46s
-atelet-vcshk                              1/1     Running     0          47s
-atenet-egress-68b8df7b94-dntpj            1/1     Running     0          46s
-atenet-router-8f46bdc9d-nqhdh             1/1     Running     0          46s
-k8s-credential-provider-d9f95b69f-t625l   1/1     Running     0          47s
-rustfs-7b5d94bc9b-r4cfm                   1/1     Running     0          47s
-rustfs-bucket-init-z6csk                  0/1     Completed   0          46s
+ate-api-server-5494df4d67-7nv7d           1/1     Running     0          56s
+ate-api-server-5494df4d67-b4wt8           1/1     Running     0          56s
+ate-controller-7d9c95cd77-kfnzq           1/1     Running     0          56s
+atelet-dr2q2                              1/1     Running     0          56s
+atenet-egress-68b8df7b94-g7pmj            1/1     Running     0          56s
+atenet-router-8f46bdc9d-dpzph             1/1     Running     0          56s
+k8s-credential-provider-d9f95b69f-c28xs   1/1     Running     0          56s
+rustfs-7b5d94bc9b-wzznq                   1/1     Running     0          56s
+rustfs-bucket-init-k2swc                  0/1     Completed   0          56s
 snapshot store volume: 2Gi requested, 2Gi bound
 ATESPACE   NAME   TEMPLATE   STATE   WORKER POD   WORKER IPS   VERSION   AGE
 ```
@@ -795,13 +794,13 @@ kubectl logs -n kagent deployment/kagent-controller -c controller | grep -o '"st
 ```text
 NAME                                                 READY   STATUS    RESTARTS      AGE
 kagent-clickhouse-shard0-0                           1/1     Running   0             75s
-kagent-controller-86b94796b-hmjds                    2/2     Running   1 (35s ago)   75s
-kagent-default-577c7bd4d6-9ttsj                      1/1     Running   0             75s
-kagent-default-577c7bd4d6-bf644                      1/1     Running   0             75s
-kagent-postgresql-5fb9d7f7d7-s894n                   2/2     Running   0             3m3s
-kagent-ui-68dbbd8696-62tpm                           1/1     Running   0             75s
-kmcp-enterprise-controller-manager-f4d57d7db-59ptn   1/1     Running   0             75s
-solo-enterprise-k8sobjects-6dd5969c7d-kbv4t          1/1     Running   0             75s
+kagent-controller-86b94796b-646bd                    2/2     Running   1 (37s ago)   75s
+kagent-default-577c7bd4d6-fdltr                      1/1     Running   0             75s
+kagent-default-577c7bd4d6-vwll8                      1/1     Running   0             75s
+kagent-postgresql-5fb9d7f7d7-h6q4s                   2/2     Running   0             2m36s
+kagent-ui-68dbbd8696-vdshm                           1/1     Running   0             75s
+kmcp-enterprise-controller-manager-f4d57d7db-dtj2z   1/1     Running   0             75s
+solo-enterprise-k8sobjects-6dd5969c7d-f89vh          1/1     Running   0             75s
 solo-enterprise-telemetry-collector-0                1/1     Running   0             75s
 NAME             DESIRED   REPLICAS   READY   AGE
 kagent-default   2         2          2       75s
@@ -875,7 +874,6 @@ kubectl rollout status deployment/agentgateway-proxy -n agentgateway-system --ti
 
 ```text
 gateway.gateway.networking.k8s.io/agentgateway-proxy condition met
-Waiting for deployment "agentgateway-proxy" rollout to finish: 0 out of 1 new replicas have been updated...
 Waiting for deployment "agentgateway-proxy" rollout to finish: 0 of 1 updated replicas are available...
 deployment "agentgateway-proxy" successfully rolled out
 ```
@@ -1306,7 +1304,7 @@ export FIRST_CONTEXT=$(echo "$TURN" | cut -f2)
 **Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a16f09-da97-7281-93ac-9a8e22e73b9e	up and running
+TASK_STATE_COMPLETED	01a16f33-18f7-74c3-9612-a21079bf0d8d	up and running
 ```
 
 `TASK_STATE_COMPLETED`, the session's ID, and the reply. An answer alone does not prove the
@@ -1349,7 +1347,7 @@ kubectl logs -n agentgateway-system deployment/agentgateway-proxy --since=10m \
 atenet-egress: 10.244.0.17
 route=agentgateway-system/anthropic-messages
 endpoint=api.anthropic.com:443
-src.addr=10.244.0.17:42514
+src.addr=10.244.0.17:48156
 http.status=200
 gen_ai.usage.input_tokens=702
 gen_ai.usage.output_tokens=6
@@ -1392,13 +1390,13 @@ kubectl-ate get actor-template -a kagent
 kubectl-ate get tags -a ate-golden
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 ATESPACE   NAME                     SANDBOX CLASS          GOLDEN TAG                             ERROR   AGE
-kagent     assistant-5740ca18daa5   SANDBOX_CLASS_GVISOR   fd33e723-2ac7-401d-bf63-68fb133283e8           18s
+kagent     assistant-480b1e1a8588   SANDBOX_CLASS_GVISOR   3205cecd-a134-4fd1-9d95-6672d7a7904f           14s
 ATESPACE     NAME                                   SCOPE                 STATE   SNAPSHOT                                                                                   CONTENT SCOPE                 AGE
-ate-golden   fd33e723-2ac7-401d-bf63-68fb133283e8   TAG_SCOPE_PUBLISHED   Ready   gs://ate-snapshots/kagent/atespaces/ate-golden/tags/f86d369d-2de7-4ced-b11c-21f53e995a80   SNAPSHOT_CONTENT_SCOPE_FULL   3s
+ate-golden   3205cecd-a134-4fd1-9d95-6672d7a7904f   TAG_SCOPE_PUBLISHED   Ready   gs://ate-snapshots/kagent/atespaces/ate-golden/tags/b211e64f-6953-4d9f-ab06-0c54354291a9   SNAPSHOT_CONTENT_SCOPE_FULL   4s
 ```
 
 The template's `GOLDEN TAG` is the tag in the `ate-golden` atespace, and the tag's snapshot is a
@@ -1412,14 +1410,14 @@ kubectl-ate get actors -a kagent
 kubectl-ate get workers
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a142c6-afbf-7eb6-a706-e86246c25bf9   kagent/assistant-5740ca18daa5   ACTOR_STATE_SUSPENDED   <none>                    5         1s
+kagent     session-01a16f33-18f7-74c3-9612-a21079bf0d8d   kagent/assistant-480b1e1a8588   ACTOR_STATE_SUSPENDED   <none>                    5         1s
 NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                      AGE
-58d3b768-2ea5-413e-bac2-d02731a5a6a7   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-5d55b7f7c9-w2qzl   79s
-38340333-3e7b-4208-a980-377a967fc5ea   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-5d55b7f7c9-z6hz7   79s
+a3aeb6a5-004d-4dff-8f50-9422fda4aa56   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-fdltr   96s
+1c9402fb-6022-47f4-a5fa-dc828bc11167   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-vwll8   94s
 ```
 
 Step 9's session is `SUSPENDED`, with no worker pod and no IP. It holds nothing on a worker
@@ -1468,13 +1466,13 @@ wait_suspended "$CONV"
 kubectl-ate get actor "session-${CONV}" -a kagent
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a142c6-b476-76b5-8208-9b0c1708364a	OK.
-suspended (polled 1s after the reply)
+TASK_STATE_COMPLETED	01a16f33-1d9c-7a53-9a92-83dd0b559c34	OK.
+suspended (polled 0s after the reply)
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a142c6-b476-76b5-8208-9b0c1708364a   kagent/assistant-5740ca18daa5   ACTOR_STATE_SUSPENDED   <none>                    5         1s
+kagent     session-01a16f33-1d9c-7a53-9a92-83dd0b559c34   kagent/assistant-480b1e1a8588   ACTOR_STATE_SUSPENDED   <none>                    5         0s
 ```
 
 The actor was suspended as soon as the turn ended. **There is no idle timeout to configure.** kagent
@@ -1490,15 +1488,15 @@ wait_suspended "$CONV"
 actor_events "$CONV"
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a142c6-b476-76b5-8208-9b0c1708364a	Your project is called Larkspur.
+TASK_STATE_COMPLETED	01a16f33-1d9c-7a53-9a92-83dd0b559c34	Your project is called Larkspur.
 suspended (polled 1s after the reply)
-03:34:41.172	Restore timing breakdown	golden/full	91 ms
-03:34:41.821	Checkpoint timing breakdown	latest/full	75 ms
-03:34:43.176	Restore timing breakdown	latest/full	90 ms
-03:34:43.832	Checkpoint timing breakdown	latest/full	69 ms
+18:36:23.522	Restore timing breakdown	golden/full	109 ms
+18:36:24.088	Checkpoint timing breakdown	latest/data	40 ms
+18:36:24.413	Restore timing breakdown	latest/data	89 ms
+18:36:25.028	Checkpoint timing breakdown	latest/data	48 ms
 ```
 
 The agent remembered, and atelet's log shows how:
@@ -1506,14 +1504,15 @@ The agent remembered, and atelet's log shows how:
 | Event | Snapshot | What it means |
 |---|---|---|
 | First restore | `golden/full` | The new actor started from the agent's golden memory image |
-| Checkpoint | `latest/full` | At the end of the turn, the session's whole memory and its data directory were saved |
-| Second restore | `latest/full` | The session's own memory image, as it was when the turn ended |
-| Checkpoint | `latest/full` | Saved again, replacing the previous one |
+| Checkpoint | `latest/data` | At the end of the turn, the session's data directory was saved |
+| Second restore | `latest/data` | The session's data directory, as it was when the turn ended |
+| Checkpoint | `latest/data` | Saved again, replacing the previous one |
 
-Every checkpoint saves the actor's memory, not only its data directory (`full`, not `data`). That
-is why a suspended session takes megabytes in the snapshot store (Step
-28), and why the store holds everything the runtime had in memory, not only what it wrote to disk
-(Step 18).
+A checkpoint saves the session's data directory, not its memory (`data`, not `full`). The runtime
+keeps the session in a database in that directory (Step 13). Whatever the runtime held only in
+memory when it suspended is not kept. Only
+the golden image, taken once per agent, is a memory image. That is why a suspended session takes
+kilobytes in the snapshot store rather than megabytes (Step 13).
 
 A suspended session can resume on a different worker from the one it last ran on, because
 everything it needs is in the snapshot store.
@@ -1547,19 +1546,23 @@ The collector batches spans for a few seconds, and the gateway's arrive after th
 until both are there, then read the session:
 
 ```bash run id=step-12-trace
-for i in $(seq 1 12); do trace_spans "$CONV" | grep -q agentgateway-proxy && break; sleep 5; done
+for i in $(seq 1 12); do
+  SPANS=$(trace_spans "$CONV")
+  [ "$(printf '%s\n' "$SPANS" | cut -f1 | sort -u | wc -l)" -eq "$(printf '%s\n' "$SPANS" | grep -c agentgateway-proxy)" ] && break
+  sleep 5
+done
 trace_spans "$CONV"
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-438278c0	decb87	0765e2	assistant	invoke_agent assistant
-438278c0	f93958	decb87	assistant	generate_content claude-haiku-4-5
-438278c0	8fa433	c12887	agentgateway-proxy	POST /v1/messages/*
-5f0715c6	cbddb6	e19b58	assistant	invoke_agent assistant
-5f0715c6	3d7baa	cbddb6	assistant	generate_content claude-haiku-4-5
-5f0715c6	f26b20	93356a	agentgateway-proxy	POST /v1/messages/*
+af286137	87c1d2	336e67	assistant	invoke_agent assistant
+af286137	464bfe	87c1d2	assistant	generate_content claude-haiku-4-5
+af286137	e99c24	504e87	agentgateway-proxy	POST /v1/messages/*
+b6db3f6c	6cfdd3	ff536b	assistant	invoke_agent assistant
+b6db3f6c	ba242f	6cfdd3	assistant	generate_content claude-haiku-4-5
+b6db3f6c	ffea21	1a0bbd	agentgateway-proxy	POST /v1/messages/*
 ```
 
 Two traces, one per turn of Step 11. In each, the agent's `invoke_agent` span holds its
@@ -1600,11 +1603,11 @@ printf '\000\000\000\000\046\052\044%s' "$CONV" \
 kill "$TRACE_PF"
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-   1 438278c06497107828e9240b2c17413e
-   1 5f0715c6b75b6678e8b4ec5ae079db0d
+   1 af2861375e92ffd54b53647fa2e2fd6b
+   1 b6db3f6cd904f540b44bc79e3aafd5ce
    1 grpc-status: 0
 ```
 
@@ -1625,13 +1628,13 @@ kubectl logs -n agentgateway-system deployment/agentgateway-proxy --since=15m | 
   | tr ' ' '\n' | grep -E '^(route|http.status|trace.id|gen_ai.usage.input_tokens)='
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-last turn's trace: 438278c06497107828e9240b2c17413e
+last turn's trace: b6db3f6cd904f540b44bc79e3aafd5ce
 route=agentgateway-system/anthropic-messages
 http.status=200
-trace.id=438278c06497107828e9240b2c17413e
+trace.id=b6db3f6cd904f540b44bc79e3aafd5ce
 gen_ai.usage.input_tokens=718
 ```
 
@@ -1645,18 +1648,18 @@ kubectl-ate get actor "session-${CONV}" -a kagent -o json \
   | jq '{name: .metadata.name, uid: .metadata.uid, version: .metadata.version, state: .status.state, snapshot: .status.externalSnapshot}'
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 {
-  "name": "session-01a142c6-b476-76b5-8208-9b0c1708364a",
-  "uid": "3a590373-d529-48a7-bfa9-7c3535c253f4",
+  "name": "session-01a16f33-1d9c-7a53-9a92-83dd0b559c34",
+  "uid": "c366c509-39a2-47b6-91c7-5b8416f433b8",
   "version": "9",
   "state": "ACTOR_STATE_SUSPENDED",
   "snapshot": {
-    "actorTemplateUid": "fd33e723-2ac7-401d-bf63-68fb133283e8",
-    "contentScope": "SNAPSHOT_CONTENT_SCOPE_FULL",
-    "snapshotUri": "gs://ate-snapshots/kagent/atespaces/kagent/actors/3a590373-d529-48a7-bfa9-7c3535c253f4/snapshots/6b36f39d-17ba-4453-b97d-5d0ea2c58517"
+    "actorTemplateUid": "3205cecd-a134-4fd1-9d95-6672d7a7904f",
+    "contentScope": "SNAPSHOT_CONTENT_SCOPE_DATA",
+    "snapshotUri": "gs://ate-snapshots/kagent/atespaces/kagent/actors/c366c509-39a2-47b6-91c7-5b8416f433b8/snapshots/3b73f9c0-1e6f-421a-bd94-f05ea9dbbe8f"
   }
 }
 ```
@@ -1672,16 +1675,16 @@ kubectl-ate get workers
 kubectl-ate suspend actor "session-${CONV}" -a kagent
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 ATESPACE   NAME                                           TEMPLATE                        STATE                 WORKER POD                               WORKER IPS    VERSION   AGE
-kagent     session-01a142c6-b476-76b5-8208-9b0c1708364a   kagent/assistant-5740ca18daa5   ACTOR_STATE_RUNNING   kagent/kagent-default-5d55b7f7c9-w2qzl   10.244.0.24   11        12s
+kagent     session-01a16f33-1d9c-7a53-9a92-83dd0b559c34   kagent/assistant-480b1e1a8588   ACTOR_STATE_RUNNING   kagent/kagent-default-577c7bd4d6-vwll8   10.244.0.25   11        11s
 NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                      AGE
-58d3b768-2ea5-413e-bac2-d02731a5a6a7   kagent-default   WORKER_STATE_ACTIVE   1/1000   0/6   0/12220312Ki   kagent/kagent-default-5d55b7f7c9-w2qzl   92s
-38340333-3e7b-4208-a980-377a967fc5ea   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-5d55b7f7c9-z6hz7   92s
+a3aeb6a5-004d-4dff-8f50-9422fda4aa56   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-fdltr   107s
+1c9402fb-6022-47f4-a5fa-dc828bc11167   kagent-default   WORKER_STATE_ACTIVE   1/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-vwll8   105s
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a142c6-b476-76b5-8208-9b0c1708364a   kagent/assistant-5740ca18daa5   ACTOR_STATE_SUSPENDED   <none>                    13        12s
+kagent     session-01a16f33-1d9c-7a53-9a92-83dd0b559c34   kagent/assistant-480b1e1a8588   ACTOR_STATE_SUSPENDED   <none>                    13        11s
 ```
 
 > [!WARNING]
@@ -1749,29 +1752,26 @@ echo "-- golden images"
 snapshot_ls "kagent/atespaces/ate-golden/"
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
--- session 01a142c6-b476-76b5-8208-9b0c1708364a (actor 3a590373-d529-48a7-bfa9-7c3535c253f4)
-2026-10-16 03:34:53      80113 kagent/atespaces/kagent/actors/3a590373-d529-48a7-bfa9-7c3535c253f4/snapshots/a0a72cf3-aee4-4b37-a579-250dc79ed825/checkpoint.img.zstd
-2026-10-16 03:34:53       1606 kagent/atespaces/kagent/actors/3a590373-d529-48a7-bfa9-7c3535c253f4/snapshots/a0a72cf3-aee4-4b37-a579-250dc79ed825/durable-dir-data.tar.zstd
-2026-10-16 03:34:53        665 kagent/atespaces/kagent/actors/3a590373-d529-48a7-bfa9-7c3535c253f4/snapshots/a0a72cf3-aee4-4b37-a579-250dc79ed825/manifest.json
-2026-10-16 03:34:53    1511775 kagent/atespaces/kagent/actors/3a590373-d529-48a7-bfa9-7c3535c253f4/snapshots/a0a72cf3-aee4-4b37-a579-250dc79ed825/pages.img.zstd
-2026-10-16 03:34:53       2675 kagent/atespaces/kagent/actors/3a590373-d529-48a7-bfa9-7c3535c253f4/snapshots/a0a72cf3-aee4-4b37-a579-250dc79ed825/pages_meta.img.zstd
+-- session 01a16f33-1d9c-7a53-9a92-83dd0b559c34 (actor c366c509-39a2-47b6-91c7-5b8416f433b8)
+2026-10-24 18:36:34       1609 kagent/atespaces/kagent/actors/c366c509-39a2-47b6-91c7-5b8416f433b8/snapshots/b4d14f00-999f-4d1c-8f21-2f791f7b2306/durable-dir-data.tar.zstd
+2026-10-24 18:36:34        619 kagent/atespaces/kagent/actors/c366c509-39a2-47b6-91c7-5b8416f433b8/snapshots/b4d14f00-999f-4d1c-8f21-2f791f7b2306/manifest.json
 -- golden images
-2026-10-16 03:34:37      78414 kagent/atespaces/ate-golden/tags/f86d369d-2de7-4ced-b11c-21f53e995a80/checkpoint.img.zstd
-2026-10-16 03:34:37        901 kagent/atespaces/ate-golden/tags/f86d369d-2de7-4ced-b11c-21f53e995a80/durable-dir-data.tar.zstd
-2026-10-16 03:34:37        661 kagent/atespaces/ate-golden/tags/f86d369d-2de7-4ced-b11c-21f53e995a80/manifest.json
-2026-10-16 03:34:37    1013643 kagent/atespaces/ate-golden/tags/f86d369d-2de7-4ced-b11c-21f53e995a80/pages.img.zstd
-2026-10-16 03:34:37       1938 kagent/atespaces/ate-golden/tags/f86d369d-2de7-4ced-b11c-21f53e995a80/pages_meta.img.zstd
+2026-10-24 18:36:19      77919 kagent/atespaces/ate-golden/tags/b211e64f-6953-4d9f-ab06-0c54354291a9/checkpoint.img.zstd
+2026-10-24 18:36:19        901 kagent/atespaces/ate-golden/tags/b211e64f-6953-4d9f-ab06-0c54354291a9/durable-dir-data.tar.zstd
+2026-10-24 18:36:19        661 kagent/atespaces/ate-golden/tags/b211e64f-6953-4d9f-ab06-0c54354291a9/manifest.json
+2026-10-24 18:36:19    2006809 kagent/atespaces/ate-golden/tags/b211e64f-6953-4d9f-ab06-0c54354291a9/pages.img.zstd
+2026-10-24 18:36:19       2174 kagent/atespaces/ate-golden/tags/b211e64f-6953-4d9f-ab06-0c54354291a9/pages_meta.img.zstd
 ```
 
-Each session keeps one snapshot, which each checkpoint replaces: its memory image
-(`pages.img`, the largest object) with the process state beside it, and its data directory
-(`durable-dir-data.tar`). The data directory holds the runtime's database (`sessions.db`), and the memory
-image holds whatever the runtime had in memory, the session's text included. That **is the
-session, in readable text**: compressed with zstd, not encrypted. The golden image is the
-agent's memory at start-up, shared by every session with that agent. kagent's tables in
+Each session keeps one snapshot, which each checkpoint replaces: its data directory
+(`durable-dir-data.tar`) and a manifest that names its scope, `data`. The data directory holds the
+runtime's database (`sessions.db`), the session's text included. That **is the session, in
+readable text**: compressed with zstd, not encrypted. The golden image is a full memory image
+(`pages.img`, the largest object, with the process state beside it): the agent's memory at
+start-up, shared by every session with that agent. kagent's tables in
 PostgreSQL hold a second copy of each session's events.
 
 > [!WARNING]
@@ -1795,10 +1795,10 @@ this helper frames the gRPC-Web request by hand, the same request the UI sends: 
 header, then the field (tag `0x0a`, length 36, the session ID):
 
 ```bash run id=step-14-helpers
-# kagent_delete_session <session id>: SessionService/DeleteSession; prints grpc-status.
+# kagent_delete_session <session id>: kagent.api.v1.SessionService/DeleteSession; prints grpc-status.
 kagent_delete_session() {
   printf '\000\000\000\000\046\012\044%s' "$1" \
-    | curl -sS --max-time 30 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/kagent.api.v1alpha1.SessionService/DeleteSession" \
+    | curl -sS --max-time 30 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/kagent.api.v1.SessionService/DeleteSession" \
         -H "Authorization: Bearer $(kagent_token)" \
         -H 'Content-Type: application/grpc-web+proto' -H 'X-Grpc-Web: 1' --data-binary @- \
     | LC_ALL=C tr -c '[:print:]' '\n' | grep -E '^grpc-(status|message)'
@@ -1829,10 +1829,10 @@ echo "-- directory left on the node:"
 docker exec "${KIND_CLUSTER_NAME}-control-plane" ls /var/lib/ate/actors/${CONV_ACTOR_UID}
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-Error: failed to get actor "session-01a142c6-b476-76b5-8208-9b0c1708364a": rpc error: code = NotFound desc = Actor kagent/session-01a142c6-b476-76b5-8208-9b0c1708364a not found
+Error: failed to get actor "session-01a16f33-1d9c-7a53-9a92-83dd0b559c34": rpc error: code = NotFound desc = Actor kagent/session-01a16f33-1d9c-7a53-9a92-83dd0b559c34 not found
 -- snapshot objects left for the actor:
 (no objects)
 -- directory left on the node:
@@ -1913,12 +1913,12 @@ kubectl-ate get egress-policy "session-${CLAUDE_CONTEXT}" --atespace kagent -o j
   | jq -r '.rules[] | to_entries[0] | "\(.key)\t\(.value.hostnames[0]):\(.value.ports.numbers[0])\t\([.value.effects.replaceHeaders[]? | "\(.header) <- \(.credentialUri)"] | join(", "))"'
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a142c7-4af8-7e6c-b0e4-8ed588e1c096	claude code harness
+TASK_STATE_COMPLETED	01a16f33-b82d-7e26-a71e-da922fde5d16	claude code harness
 http	agentgateway-proxy.agentgateway-system.svc.cluster.local:80	x-api-key <- ate-secret://k8s.io/default/kagent/kagent-gateway-consumer-key/api-key
-http	kagent-controller.kagent.svc:8083	
+http	kagent-controller.kagent.svc:8083
 http	solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
 ```
 
@@ -1936,6 +1936,10 @@ Four harness kinds exist on this release, and an Agent's harness names exactly o
 | `claude` | Claude Code | This step |
 | `codex` | OpenAI Codex | Not covered: not verified on this release |
 | `byo` | Your own image | Not covered: see below |
+
+Every harness in this guide names its image in `workload.image`, pinned by digest. Only `byo` must:
+for the other three kinds `workload` is optional, and the controller fills in the image from the
+chart's `config.harnessImages`. This release's chart ships that map empty, so leave the image in.
 
 `byo` is the path for other frameworks, such as LangGraph or CrewAI, and it is not a plain
 container: the image must implement kagent's agent contract, which kagent's adapter packages for
