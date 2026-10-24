@@ -129,7 +129,7 @@ export CLAUDE_HARNESS_IMAGE=ghcr.io/kagent-dev/kagent/claude-harness:1.0.0-alpha
 export POSTGRES_IMAGE=postgres:18.6-alpine3.23@sha256:885cf05d376c7cf27afef02073e6bdac3841252537f16e244fd1c1e6a7c99fb1
 
 # The snapshot store's volume, Step 5. Sized there; it cannot grow later on kind.
-export SNAPSHOT_STORE_SIZE=2Gi
+export SNAPSHOT_STORE_SIZE=1Gi
 
 # The S3 client Step 14 uses to read the snapshot store.
 export AWS_CLI_IMAGE=amazon/aws-cli:2.17.0@sha256:643507c10ada7964ca6157b3d799f030b90577643da9955d319a77399ed80d73
@@ -627,9 +627,10 @@ volume now. On kind's storage class a volume cannot grow after install: an upgra
 the size fails with `only dynamically provisioned pvc can be resized and the storageclass that
 provisions the pvc must support resize`, and leaves the release `failed`.
 
-On this release the store holds, per suspended session, only its data directory: 2.2 KB after two
-turns (Step 14). Each agent's golden snapshot is a memory image of about 2.1 MB, as much as
-about 900 such sessions. `SNAPSHOT_STORE_SIZE` sets 2Gi, twice the chart's 1Gi default.
+On this release a suspended session keeps only its data directory in the store, which takes 28 to
+32 KiB of the volume per session from 1 to 20 turns (Step 28), and each agent's golden snapshot about
+1.7 MB. `SNAPSHOT_STORE_SIZE` sets 1Gi, the chart's default, which holds about 30,000 suspended
+sessions at those sizes. Set it higher now if you expect more.
 
 Install the chart:
 
@@ -687,21 +688,21 @@ deployment.apps/k8s-credential-provider condition met
 deployment.apps/rustfs condition met
 daemon set "atelet" successfully rolled out
 NAME                                      READY   STATUS      RESTARTS   AGE
-ate-api-server-5494df4d67-74d5j           1/1     Running     0          56s
-ate-api-server-5494df4d67-hwbfr           1/1     Running     0          56s
-ate-controller-7d9c95cd77-kdsnf           1/1     Running     0          56s
-atelet-fwfck                              1/1     Running     0          56s
-atenet-egress-68b8df7b94-gwxq9            1/1     Running     0          56s
-atenet-router-8f46bdc9d-h86sz             1/1     Running     0          56s
-k8s-credential-provider-d9f95b69f-zqxfm   1/1     Running     0          56s
-rustfs-7b5d94bc9b-vqgfp                   1/1     Running     0          56s
-rustfs-bucket-init-qr22b                  0/1     Completed   0          56s
-snapshot store volume: 2Gi requested, 2Gi bound
+ate-api-server-5494df4d67-ts6x5           1/1     Running     0          49s
+ate-api-server-5494df4d67-z45vq           1/1     Running     0          49s
+ate-controller-7d9c95cd77-8dvgj           1/1     Running     0          49s
+atelet-2mjxb                              1/1     Running     0          49s
+atenet-egress-68b8df7b94-ghj44            1/1     Running     0          49s
+atenet-router-8f46bdc9d-cgtgt             1/1     Running     0          49s
+k8s-credential-provider-d9f95b69f-l5c49   1/1     Running     0          49s
+rustfs-7b5d94bc9b-dhcx5                   1/1     Running     0          49s
+rustfs-bucket-init-b89r5                  0/1     Completed   0          49s
+snapshot store volume: 1Gi requested, 1Gi bound
 ATESPACE   NAME   TEMPLATE   STATE   WORKER POD   WORKER IPS   VERSION   AGE
 ```
 
 No actors yet, and no error. An error here, rather than an empty list, is the issuer warning in
-Step 3. The volume line shows the size you set, not the chart's 1Gi.
+Step 3. The volume line shows the size you set.
 
 kagent is the control plane for agents: you declare agents as Kubernetes resources, and it turns
 each session into a Substrate actor. The release also deploys the UI, ClickHouse for traces, and a
@@ -792,18 +793,18 @@ kubectl logs -n kagent deployment/kagent-controller -c controller | grep -o '"st
 **Verified on 2026-10-24:**
 
 ```text
-NAME                                                 READY   STATUS    RESTARTS      AGE
-kagent-clickhouse-shard0-0                           1/1     Running   0             75s
-kagent-controller-86b94796b-j586l                    2/2     Running   1 (36s ago)   75s
-kagent-default-577c7bd4d6-87279                      1/1     Running   0             75s
-kagent-default-577c7bd4d6-mzmh5                      1/1     Running   0             75s
-kagent-postgresql-5fb9d7f7d7-9xdwf                   2/2     Running   0             2m44s
-kagent-ui-68dbbd8696-s7tpx                           1/1     Running   0             75s
-kmcp-enterprise-controller-manager-f4d57d7db-qfg4r   1/1     Running   0             75s
-solo-enterprise-k8sobjects-6dd5969c7d-xmv2p          1/1     Running   0             75s
-solo-enterprise-telemetry-collector-0                1/1     Running   0             75s
+NAME                                                 READY   STATUS    RESTARTS   AGE
+kagent-clickhouse-shard0-0                           1/1     Running   0          62s
+kagent-controller-86b94796b-bq6sv                    2/2     Running   0          62s
+kagent-default-577c7bd4d6-n69lv                      1/1     Running   0          62s
+kagent-default-577c7bd4d6-r2tfl                      1/1     Running   0          62s
+kagent-postgresql-5fb9d7f7d7-7nvtq                   2/2     Running   0          2m18s
+kagent-ui-68dbbd8696-tr8bf                           1/1     Running   0          62s
+kmcp-enterprise-controller-manager-f4d57d7db-ndxzx   1/1     Running   0          62s
+solo-enterprise-k8sobjects-6dd5969c7d-8vzl9          1/1     Running   0          62s
+solo-enterprise-telemetry-collector-0                1/1     Running   0          62s
 NAME             DESIRED   REPLICAS   READY   AGE
-kagent-default   2         2          2       75s
+kagent-default   2         2          2       62s
    1 "state":"Licensed"
    1 "state":"Warning"
 ```
@@ -874,6 +875,7 @@ kubectl rollout status deployment/agentgateway-proxy -n agentgateway-system --ti
 
 ```text
 gateway.gateway.networking.k8s.io/agentgateway-proxy condition met
+Waiting for deployment "agentgateway-proxy" rollout to finish: 0 out of 1 new replicas have been updated...
 Waiting for deployment "agentgateway-proxy" rollout to finish: 0 of 1 updated replicas are available...
 deployment "agentgateway-proxy" successfully rolled out
 ```
@@ -1304,7 +1306,7 @@ export FIRST_CONTEXT=$(echo "$TURN" | cut -f2)
 **Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a16fc6-45ae-7cee-995c-0606d961b2a2	up and running
+TASK_STATE_COMPLETED	01a16fec-c32a-7211-ba2c-097584dbfeb9	up and running
 ```
 
 `TASK_STATE_COMPLETED`, the session's ID, and the reply. An answer alone does not prove the
@@ -1344,10 +1346,10 @@ kubectl logs -n agentgateway-system deployment/agentgateway-proxy --since=10m \
 **Verified on 2026-10-24:**
 
 ```text
-atenet-egress: 10.244.0.15
+atenet-egress: 10.244.0.14
 route=agentgateway-system/anthropic-messages
 endpoint=api.anthropic.com:443
-src.addr=10.244.0.15:34550
+src.addr=10.244.0.14:54354
 http.status=200
 gen_ai.usage.input_tokens=702
 gen_ai.usage.output_tokens=6
@@ -1394,9 +1396,9 @@ kubectl-ate get tags -a ate-golden
 
 ```text
 ATESPACE   NAME                     SANDBOX CLASS          GOLDEN TAG                             ERROR   AGE
-kagent     assistant-b6360dd965da   SANDBOX_CLASS_GVISOR   5ff1c233-8ff4-4ffa-8554-fbe187137b2f           21s
+kagent     assistant-f1d51c57a6f1   SANDBOX_CLASS_GVISOR   14f31a02-9828-498a-92fd-ccbf49b423da           12s
 ATESPACE     NAME                                   SCOPE                 STATE   SNAPSHOT                                                                                   CONTENT SCOPE                 AGE
-ate-golden   5ff1c233-8ff4-4ffa-8554-fbe187137b2f   TAG_SCOPE_PUBLISHED   Ready   gs://ate-snapshots/kagent/atespaces/ate-golden/tags/0c7540a8-1578-4097-9e0b-67fb322a48b4   SNAPSHOT_CONTENT_SCOPE_FULL   4s
+ate-golden   14f31a02-9828-498a-92fd-ccbf49b423da   TAG_SCOPE_PUBLISHED   Ready   gs://ate-snapshots/kagent/atespaces/ate-golden/tags/01aebb97-422a-4691-842f-65e7a3aa6814   SNAPSHOT_CONTENT_SCOPE_FULL   3s
 ```
 
 The template's `GOLDEN TAG` is the tag in the `ate-golden` atespace, and the tag's snapshot is a
@@ -1414,10 +1416,10 @@ kubectl-ate get workers
 
 ```text
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a16fc6-45ae-7cee-995c-0606d961b2a2   kagent/assistant-b6360dd965da   ACTOR_STATE_SUSPENDED   <none>                    5         1s
+kagent     session-01a16fec-c32a-7211-ba2c-097584dbfeb9   kagent/assistant-f1d51c57a6f1   ACTOR_STATE_SUSPENDED   <none>                    5         1s
 NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                      AGE
-adc3347e-2d7a-41e4-9011-a79cf39cc793   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-87279   97s
-7b3a2b3e-0b87-471b-a1c7-c43313a78129   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-mzmh5   97s
+f3258336-43dc-452d-aab3-40783548edd4   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-n69lv   77s
+5fc42917-c433-4615-b74d-e6281f0a9d0d   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-r2tfl   77s
 ```
 
 Step 9's session is `SUSPENDED`, with no worker pod and no IP. It holds nothing on a worker
@@ -1469,10 +1471,10 @@ kubectl-ate get actor "session-${CONV}" -a kagent
 **Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a16fc6-4abf-771a-835c-374ca3afccbd	OK.
-suspended (polled 1s after the reply)
+TASK_STATE_COMPLETED	01a16fec-c824-785d-ba7b-a8619b2158dc	OK.
+suspended (polled 0s after the reply)
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a16fc6-4abf-771a-835c-374ca3afccbd   kagent/assistant-b6360dd965da   ACTOR_STATE_SUSPENDED   <none>                    5         1s
+kagent     session-01a16fec-c824-785d-ba7b-a8619b2158dc   kagent/assistant-f1d51c57a6f1   ACTOR_STATE_SUSPENDED   <none>                    5         0s
 ```
 
 The actor was suspended as soon as the turn ended. **There is no idle timeout to configure.** kagent
@@ -1491,12 +1493,12 @@ actor_events "$CONV"
 **Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a16fc6-4abf-771a-835c-374ca3afccbd	Your project is called Larkspur.
+TASK_STATE_COMPLETED	01a16fec-c824-785d-ba7b-a8619b2158dc	Your project is called Larkspur.
 suspended (polled 1s after the reply)
-21:17:08.872	Restore timing breakdown	golden/full	105 ms
-21:17:09.456	Checkpoint timing breakdown	latest/data	48 ms
-21:17:10.850	Restore timing breakdown	latest/data	102 ms
-21:17:11.492	Checkpoint timing breakdown	latest/data	37 ms
+21:59:11.322	Restore timing breakdown	golden/full	98 ms
+21:59:11.909	Checkpoint timing breakdown	latest/data	46 ms
+21:59:12.253	Restore timing breakdown	latest/data	94 ms
+21:59:12.872	Checkpoint timing breakdown	latest/data	41 ms
 ```
 
 The agent remembered, and atelet's log shows how:
@@ -1557,12 +1559,12 @@ trace_spans "$CONV"
 **Verified on 2026-10-24:**
 
 ```text
-700d05eb	1b7653	bbb535	assistant	invoke_agent assistant
-700d05eb	0e9241	1b7653	assistant	generate_content claude-haiku-4-5
-700d05eb	4d03d8	3debaa	agentgateway-proxy	POST /v1/messages/*
-a76d4f7b	f24066	791d96	assistant	invoke_agent assistant
-a76d4f7b	cf6256	f24066	assistant	generate_content claude-haiku-4-5
-a76d4f7b	97b2ec	2ba7ac	agentgateway-proxy	POST /v1/messages/*
+b5d2d3f9	781672	1d0a72	assistant	invoke_agent assistant
+b5d2d3f9	ff18a2	781672	assistant	generate_content claude-haiku-4-5
+b5d2d3f9	e6fb40	fd2b5d	agentgateway-proxy	POST /v1/messages/*
+e7e838dc	2d9562	83c5b3	assistant	invoke_agent assistant
+e7e838dc	3ae638	2d9562	assistant	generate_content claude-haiku-4-5
+e7e838dc	67e292	9b762f	agentgateway-proxy	POST /v1/messages/*
 ```
 
 Two traces, one per turn of Step 11. In each, the agent's `invoke_agent` span holds its
@@ -1606,8 +1608,8 @@ kill "$TRACE_PF"
 **Verified on 2026-10-24:**
 
 ```text
-   1 700d05eb692fa3029a0bb044bb646ceb
-   1 a76d4f7baf715ad297ce8a36210c033a
+   1 b5d2d3f969cad51eeea7903175f6e2d8
+   1 e7e838dc3342eb944c559d76e00a87dc
    1 grpc-status: 0
 ```
 
@@ -1631,10 +1633,10 @@ kubectl logs -n agentgateway-system deployment/agentgateway-proxy --since=15m | 
 **Verified on 2026-10-24:**
 
 ```text
-last turn's trace: 700d05eb692fa3029a0bb044bb646ceb
+last turn's trace: b5d2d3f969cad51eeea7903175f6e2d8
 route=agentgateway-system/anthropic-messages
 http.status=200
-trace.id=700d05eb692fa3029a0bb044bb646ceb
+trace.id=b5d2d3f969cad51eeea7903175f6e2d8
 gen_ai.usage.input_tokens=718
 ```
 
@@ -1652,14 +1654,14 @@ kubectl-ate get actor "session-${CONV}" -a kagent -o json \
 
 ```text
 {
-  "name": "session-01a16fc6-4abf-771a-835c-374ca3afccbd",
-  "uid": "eaca74b1-0b0b-403d-a54e-497f872d79da",
+  "name": "session-01a16fec-c824-785d-ba7b-a8619b2158dc",
+  "uid": "88633d66-f957-4dcc-a1bc-1b0bdc21cf05",
   "version": "9",
   "state": "ACTOR_STATE_SUSPENDED",
   "snapshot": {
-    "actorTemplateUid": "5ff1c233-8ff4-4ffa-8554-fbe187137b2f",
+    "actorTemplateUid": "14f31a02-9828-498a-92fd-ccbf49b423da",
     "contentScope": "SNAPSHOT_CONTENT_SCOPE_DATA",
-    "snapshotUri": "gs://ate-snapshots/kagent/atespaces/kagent/actors/eaca74b1-0b0b-403d-a54e-497f872d79da/snapshots/da7a44f4-33c2-4b88-8ba6-508312b8b1ef"
+    "snapshotUri": "gs://ate-snapshots/kagent/atespaces/kagent/actors/88633d66-f957-4dcc-a1bc-1b0bdc21cf05/snapshots/854b8264-3046-4fd3-b5df-7c0e6788bee8"
   }
 }
 ```
@@ -1679,12 +1681,12 @@ kubectl-ate suspend actor "session-${CONV}" -a kagent
 
 ```text
 ATESPACE   NAME                                           TEMPLATE                        STATE                 WORKER POD                               WORKER IPS    VERSION   AGE
-kagent     session-01a16fc6-4abf-771a-835c-374ca3afccbd   kagent/assistant-b6360dd965da   ACTOR_STATE_RUNNING   kagent/kagent-default-577c7bd4d6-87279   10.244.0.24   11        12s
+kagent     session-01a16fec-c824-785d-ba7b-a8619b2158dc   kagent/assistant-f1d51c57a6f1   ACTOR_STATE_RUNNING   kagent/kagent-default-577c7bd4d6-n69lv   10.244.0.24   11        11s
 NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                      AGE
-adc3347e-2d7a-41e4-9011-a79cf39cc793   kagent-default   WORKER_STATE_ACTIVE   1/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-87279   110s
-7b3a2b3e-0b87-471b-a1c7-c43313a78129   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-mzmh5   110s
+f3258336-43dc-452d-aab3-40783548edd4   kagent-default   WORKER_STATE_ACTIVE   1/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-n69lv   88s
+5fc42917-c433-4615-b74d-e6281f0a9d0d   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-r2tfl   88s
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a16fc6-4abf-771a-835c-374ca3afccbd   kagent/assistant-b6360dd965da   ACTOR_STATE_SUSPENDED   <none>                    13        12s
+kagent     session-01a16fec-c824-785d-ba7b-a8619b2158dc   kagent/assistant-f1d51c57a6f1   ACTOR_STATE_SUSPENDED   <none>                    13        11s
 ```
 
 > [!WARNING]
@@ -1755,15 +1757,15 @@ snapshot_ls "kagent/atespaces/ate-golden/"
 **Verified on 2026-10-24:**
 
 ```text
--- session 01a16fc6-4abf-771a-835c-374ca3afccbd (actor eaca74b1-0b0b-403d-a54e-497f872d79da)
-2026-10-24 21:17:21       1611 kagent/atespaces/kagent/actors/eaca74b1-0b0b-403d-a54e-497f872d79da/snapshots/a82a20ad-f6cf-441b-b21b-00a291e9534b/durable-dir-data.tar.zstd
-2026-10-24 21:17:21        619 kagent/atespaces/kagent/actors/eaca74b1-0b0b-403d-a54e-497f872d79da/snapshots/a82a20ad-f6cf-441b-b21b-00a291e9534b/manifest.json
+-- session 01a16fec-c824-785d-ba7b-a8619b2158dc (actor 88633d66-f957-4dcc-a1bc-1b0bdc21cf05)
+2026-10-24 21:59:22       1607 kagent/atespaces/kagent/actors/88633d66-f957-4dcc-a1bc-1b0bdc21cf05/snapshots/31a74391-c496-440a-a06d-729d2186d979/durable-dir-data.tar.zstd
+2026-10-24 21:59:22        619 kagent/atespaces/kagent/actors/88633d66-f957-4dcc-a1bc-1b0bdc21cf05/snapshots/31a74391-c496-440a-a06d-729d2186d979/manifest.json
 -- golden images
-2026-10-24 21:17:04      79072 kagent/atespaces/ate-golden/tags/0c7540a8-1578-4097-9e0b-67fb322a48b4/checkpoint.img.zstd
-2026-10-24 21:17:04        900 kagent/atespaces/ate-golden/tags/0c7540a8-1578-4097-9e0b-67fb322a48b4/durable-dir-data.tar.zstd
-2026-10-24 21:17:04        661 kagent/atespaces/ate-golden/tags/0c7540a8-1578-4097-9e0b-67fb322a48b4/manifest.json
-2026-10-24 21:17:04    1873359 kagent/atespaces/ate-golden/tags/0c7540a8-1578-4097-9e0b-67fb322a48b4/pages.img.zstd
-2026-10-24 21:17:04       2158 kagent/atespaces/ate-golden/tags/0c7540a8-1578-4097-9e0b-67fb322a48b4/pages_meta.img.zstd
+2026-10-24 21:59:07      77385 kagent/atespaces/ate-golden/tags/01aebb97-422a-4691-842f-65e7a3aa6814/checkpoint.img.zstd
+2026-10-24 21:59:07        901 kagent/atespaces/ate-golden/tags/01aebb97-422a-4691-842f-65e7a3aa6814/durable-dir-data.tar.zstd
+2026-10-24 21:59:07        661 kagent/atespaces/ate-golden/tags/01aebb97-422a-4691-842f-65e7a3aa6814/manifest.json
+2026-10-24 21:59:07    2073528 kagent/atespaces/ate-golden/tags/01aebb97-422a-4691-842f-65e7a3aa6814/pages.img.zstd
+2026-10-24 21:59:07       2343 kagent/atespaces/ate-golden/tags/01aebb97-422a-4691-842f-65e7a3aa6814/pages_meta.img.zstd
 ```
 
 Each session keeps one snapshot, which each checkpoint replaces: its data directory
@@ -1834,7 +1836,7 @@ docker exec "${KIND_CLUSTER_NAME}-control-plane" ls /var/lib/ate/actors/${CONV_A
 **Verified on 2026-10-24:**
 
 ```text
-Error: failed to get actor "session-01a16fc6-4abf-771a-835c-374ca3afccbd": rpc error: code = NotFound desc = Actor kagent/session-01a16fc6-4abf-771a-835c-374ca3afccbd not found
+Error: failed to get actor "session-01a16fec-c824-785d-ba7b-a8619b2158dc": rpc error: code = NotFound desc = Actor kagent/session-01a16fec-c824-785d-ba7b-a8619b2158dc not found
 -- snapshot objects left for the actor:
 (no objects)
 -- directory left on the node:
@@ -1918,7 +1920,7 @@ kubectl-ate get egress-policy "session-${CLAUDE_CONTEXT}" --atespace kagent -o j
 **Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a16fc6-e894-737e-918d-4bb4913fca66	claude code harness
+TASK_STATE_COMPLETED	01a16fed-6258-70ce-8409-9376f7c94434	claude code harness
 http	agentgateway-proxy.agentgateway-system.svc.cluster.local:80	x-api-key <- ate-secret://k8s.io/default/kagent/kagent-gateway-consumer-key/api-key
 http	kagent-controller.kagent.svc:8083
 http	solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
@@ -2047,11 +2049,11 @@ snapshot_ls "kagent/atespaces/kagent/actors/$(kubectl-ate get actor "session-${F
 
 ```text
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a16fc6-45ae-7cee-995c-0606d961b2a2   kagent/assistant-b6360dd965da   ACTOR_STATE_SUSPENDED   <none>                    9         44s
+kagent     session-01a16fec-c32a-7211-ba2c-097584dbfeb9   kagent/assistant-f1d51c57a6f1   ACTOR_STATE_SUSPENDED   <none>                    9         43s
 -- gVisor sandboxes on the node for this actor: 0
 -- its snapshot:
-2026-10-24 21:17:51       1402 kagent/atespaces/kagent/actors/735da52a-0b64-4a6b-b397-61dfc22974ad/snapshots/2ebdbe54-220c-4104-a2e9-ac0ee30f76e9/durable-dir-data.tar.zstd
-2026-10-24 21:17:51        619 kagent/atespaces/kagent/actors/735da52a-0b64-4a6b-b397-61dfc22974ad/snapshots/2ebdbe54-220c-4104-a2e9-ac0ee30f76e9/manifest.json
+2026-10-24 21:59:52       1397 kagent/atespaces/kagent/actors/911f626f-a1e9-4ffa-a044-f3cf8bb13f6b/snapshots/14d4c339-e5b9-4a9f-9a20-4ac9b8d912f5/durable-dir-data.tar.zstd
+2026-10-24 21:59:52        619 kagent/atespaces/kagent/actors/911f626f-a1e9-4ffa-a044-f3cf8bb13f6b/snapshots/14d4c339-e5b9-4a9f-9a20-4ac9b8d912f5/manifest.json
 ```
 
 | | Running | Suspended |
@@ -2169,8 +2171,8 @@ kubectl-ate get actors -a kagent | grep -E "NAME|${FIRST_CONTEXT}|${CLAUDE_CONTE
 
 ```text
 ATESPACE   NAME                                           TEMPLATE                                    STATE                   WORKER POD                               WORKER IPS    VERSION   AGE
-kagent     session-01a16fc6-45ae-7cee-995c-0606d961b2a2   kagent/assistant-b6360dd965da               ACTOR_STATE_RUNNING     kagent/kagent-default-577c7bd4d6-mzmh5   10.244.0.25   11        48s
-kagent     session-01a16fc6-e894-737e-918d-4bb4913fca66   kagent/assistant-claude-code-9900c54a9165   ACTOR_STATE_RUNNING     kagent/kagent-default-577c7bd4d6-87279   10.244.0.24   7         7s
+kagent     session-01a16fed-6258-70ce-8409-9376f7c94434   kagent/assistant-claude-code-78391012626f   ACTOR_STATE_RUNNING     kagent/kagent-default-577c7bd4d6-r2tfl   10.244.0.25   7         7s
+kagent     session-01a16fec-c32a-7211-ba2c-097584dbfeb9   kagent/assistant-f1d51c57a6f1               ACTOR_STATE_RUNNING     kagent/kagent-default-577c7bd4d6-n69lv   10.244.0.24   11        48s
 ```
 
 What each agent process has for a credential:
@@ -2185,9 +2187,9 @@ done
 **Verified on 2026-10-24:**
 
 ```text
--- session-01a16fc6-45ae-7cee-995c-0606d961b2a2
+-- session-01a16fec-c32a-7211-ba2c-097584dbfeb9
 ANTHROPIC_API_KEY=kagent-credential-injected
--- session-01a16fc6-e894-737e-918d-4bb4913fca66
+-- session-01a16fed-6258-70ce-8409-9376f7c94434
 ANTHROPIC_API_KEY=kagent-credential-injected
 ```
 
@@ -2209,8 +2211,8 @@ done
 **Verified on 2026-10-24:**
 
 ```text
--- session-01a16fc6-45ae-7cee-995c-0606d961b2a2: consumer key 0, control "up and running" 1
--- session-01a16fc6-e894-737e-918d-4bb4913fca66: consumer key 0, control "claude code harness" 6
+-- session-01a16fec-c32a-7211-ba2c-097584dbfeb9: consumer key 0, control "up and running" 1
+-- session-01a16fed-6258-70ce-8409-9376f7c94434: consumer key 0, control "claude code harness" 6
 ```
 
 The key is not in either sandbox, and the Anthropic key is not even in the `kagent` namespace: it
@@ -2266,11 +2268,11 @@ kubectl-ate suspend actor "session-${CLAUDE_CONTEXT}" -a kagent >/dev/null
 **Verified on 2026-10-24:**
 
 ```text
--- session-01a16fc6-45ae-7cee-995c-0606d961b2a2
+-- session-01a16fec-c32a-7211-ba2c-097584dbfeb9
   https://example.com/                                                             HTTP/1.1 403 Forbidden
   https://api.anthropic.com/v1/models                                              HTTP/1.1 401 Unauthorized
   http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages      HTTP/1.1 401 Unauthorized
--- session-01a16fc6-e894-737e-918d-4bb4913fca66
+-- session-01a16fed-6258-70ce-8409-9376f7c94434
   https://example.com/                                                             HTTP/1.1 403 Forbidden
   https://api.anthropic.com/v1/models                                              HTTP/1.1 403 Forbidden
   http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages      HTTP/1.1 401 Unauthorized
@@ -2420,6 +2422,7 @@ secret/deployment-codes-token created
 configmap/deployment-codes-server created
 deployment.apps/deployment-codes created
 service/deployment-codes created
+Waiting for deployment "deployment-codes" rollout to finish: 0 out of 1 new replicas have been updated...
 Waiting for deployment "deployment-codes" rollout to finish: 0 of 1 updated replicas are available...
 deployment "deployment-codes" successfully rolled out
 ```
@@ -2582,14 +2585,14 @@ kubectl logs -n mcp-tools deployment/deployment-codes | jq -c 'select(.rpc == "t
 **Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a16fc7-4e17-7933-880e-3d56ed859c67	The deployment code for the payments service is **K7-teal-otter-0429**.
+TASK_STATE_COMPLETED	01a16fed-db6f-7ec3-8a53-007c8a190865	The deployment code for the payments service is **K7-teal-otter-0429**.
 -- egress policy:
 http	agentgateway-proxy.agentgateway-system.svc.cluster.local:80	x-api-key <- ate-secret://k8s.io/default/kagent/kagent-gateway-consumer-key/api-key
 http	kagent-controller.kagent.svc:8083
 http	solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
 https	api.anthropic.com:443
 -- MCP server log for the tool call (gateway pod: 10.244.0.27):
-{"t":"21:18:16","src":"10.244.0.27","rpc":"tools/call","tool":"lookup_code","auth":"bearer-match"}
+{"t":"22:00:22","src":"10.244.0.27","rpc":"tools/call","tool":"lookup_code","auth":"bearer-match"}
 ```
 
 The answer carries the code only the server knows, so the tool ran. The actor's policy names the
@@ -2695,11 +2698,11 @@ fi
 **Verified on 2026-10-24:**
 
 ```text
-TASK_STATE_COMPLETED	01a16fc7-69bf-7f36-8bc4-6942fc588a34	attributed
-TASK_STATE_COMPLETED	01a16fc7-6d22-736e-8587-1ceebbf7fb66	attributed
-gen_ai_token_type="output" user_id="assistant-agent" team="team-agents"  59.0
+TASK_STATE_COMPLETED	01a16fed-f80d-7d79-92c2-da3123baba78	attributed
+TASK_STATE_COMPLETED	01a16fed-fb53-799b-87b3-61699b69d870	attributed
 gen_ai_token_type="input_cache_write" user_id="assistant-agent" team="team-agents"  2698.0
 gen_ai_token_type="input_cache_read" user_id="assistant-agent" team="team-agents"  31520.0
+gen_ai_token_type="output" user_id="assistant-agent" team="team-agents"  60.0
 gen_ai_token_type="input" user_id="assistant-agent" team="team-agents"  710.0
 ```
 
@@ -2724,9 +2727,9 @@ kagent_send assistant "Reply with exactly: back under budget"
 
 ```text
 enterpriseagentgatewaybudget.enterpriseagentgateway.solo.io/team-budgets patched
-TASK_STATE_FAILED	01a16fc7-9339-7b61-9abe-161614131f7e	llm error response (code STREAM_ERROR): "POST \"http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages\": 429 Too Many Requests rate limit exceeded"
+TASK_STATE_FAILED	01a16fee-21e2-7f2b-a16d-039577fae2e0	llm error response (code STREAM_ERROR): "POST \"http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages\": 429 Too Many Requests rate limit exceeded"
 enterpriseagentgatewaybudget.enterpriseagentgateway.solo.io/team-budgets patched
-TASK_STATE_COMPLETED	01a16fc7-adba-7cd8-b594-e2ce5ff36c5f	back under budget
+TASK_STATE_COMPLETED	01a16fee-3bc5-7968-8fc6-3528e7b62173	back under budget
 ```
 
 The blocked turn fails in the agent with the gateway's `429`. The runtime retries a blocked call
@@ -2823,7 +2826,7 @@ kagent_send assistant "What exact phrase did I ask you to reply with in my first
 
 An error occurred (InvalidAccessKeyId) when calling the ListObjectsV2 operation: The Access Key Id you provided does not exist in our records.
 -- Step 9's session, suspended before the change:
-TASK_STATE_COMPLETED	01a16fc6-45ae-7cee-995c-0606d961b2a2	up and running
+TASK_STATE_COMPLETED	01a16fec-c32a-7211-ba2c-097584dbfeb9	up and running
 ```
 
 **Second, a NetworkPolicy**, so that only the components that read and write snapshots can reach the
@@ -2878,7 +2881,7 @@ kagent_send assistant "Reply with exactly: fenced" "$FIRST_CONTEXT"
 
 Connect timeout on endpoint URL: "http://rustfs.ate-system.svc:9000/ate-snapshots?list-type=2&prefix=kagent%2F&encoding-type=url"
 -- a session still resumes:
-TASK_STATE_COMPLETED	01a16fc6-45ae-7cee-995c-0606d961b2a2	fenced
+TASK_STATE_COMPLETED	01a16fec-c32a-7211-ba2c-097584dbfeb9	fenced
 ```
 
 Correct credentials, wrong pod, no connection. `snapshot_ls` and `snapshot_cat` no longer work on
@@ -3474,7 +3477,7 @@ echo -n "writer turn:                   "; kagent_send assistant "Reply with exa
 ```text
 bundled login /autoauth/token: 405
 API with no token:             401
-writer turn:                   TASK_STATE_COMPLETED	01a16fca-9565-7065-8655-fb93ea5cd6ff	keycloak token accepted
+writer turn:                   TASK_STATE_COMPLETED	01a16ff0-addb-716d-9086-448672738601	keycloak token accepted
 ```
 
 **In the browser.** Open `http://localhost:14000` (or your `KAGENT_UI_PORT`). The UI redirects to
@@ -3550,7 +3553,7 @@ KAGENT_USER=norole kagent_send assistant "Reply with exactly: hello from norole"
 **Verified on 2026-10-24:**
 
 ```text
-session created by norole: 01a16fca-a548-783d-9716-e1951e95454f
+session created by norole: 01a16ff0-bdca-785c-8d57-99bbb455ee81
 TASK_STATE_COMPLETED	hello from norole
 ```
 
@@ -3618,12 +3621,13 @@ There are two ways to run agents as ordinary pods, and they are not the same com
   for someone to reply.
 
 Substrate is the second model without its standing memory: a session holds memory only while a
-turn is running. While it waits, it is a snapshot in the store, megabytes of storage instead of tens
-of megabytes of memory.
+turn is running. While it waits, it is a snapshot in the store and rows in PostgreSQL, under a
+quarter of a megabyte in all (Step 28), instead of tens of megabytes of memory.
 
 **Reference measurements.** Measured on 2026-10-14 on the reference environment: one kind node,
-Kubernetes 1.35.0, Colima on Apple silicon with 6 vCPU and 12 GiB, the versions in this guide, with no
-other cluster running. Memory is the node's used memory before and after (from `/proc/meminfo`),
+Kubernetes 1.35.0, Colima on Apple silicon with 6 vCPU and 12 GiB, kagent-enterprise 1.0.0-alpha10,
+with no other cluster running. The storage rows were measured again on this release, on 2026-10-24
+(Step 28). Memory is the node's used memory before and after (from `/proc/meminfo`),
 divided by the number of units. The pod-per-session comparator is one pod of the same kagent
 runtime, run eight times under gVisor through a RuntimeClass with the same gVisor build Substrate
 uses, on a separate throwaway kind cluster, because Substrate's nodes do not register gVisor as a
@@ -3633,8 +3637,8 @@ container runtime. The same pod under runc is included as the comparator most fa
 |---|---|---|---|
 | Substrate control plane (`ate-system`, pod certificate controller) | 346.7 MiB | | Fixed, once per cluster |
 | Substrate, a turn in flight | about 50 MiB | | Per running turn, released when it ends |
-| Substrate, a suspended session | 0 | 1.4 MB (1 turn) to 2.5 MB (20 turns) | Per session, while it waits (Step 28) |
-| Substrate, an agent | | 1.06 MB | Golden snapshot, per agent |
+| Substrate, a suspended session | 0 | 86 KB (1 turn) to 249 KB (20 turns) | Per session, while it waits (Step 28) |
+| Substrate, an agent | | 1.7 MB | Golden snapshot, per agent |
 | Pod per session, gVisor | 59.7 MiB | | Per open session, active or not |
 | Pod per session, runc (weaker isolation) | 13.4 MiB (PSS) | | Per open session, active or not |
 | Pod per agent, runc | 13.4 MiB (PSS) | | Per agent |
@@ -3652,16 +3656,16 @@ out of every figure.
 
 | Turns in flight | Substrate memory | Substrate storage | Pod per session, gVisor | Pod per session, runc | Pod per agent |
 |---|---|---|---|---|---|
-| 5 | 0.60 GiB | 142 to 247 MB | 5.8 GiB, plus turn cost | 1.3 GiB, plus turn cost | 13 to 60 MiB, plus turn cost |
-| 10 | 0.85 GiB | 142 to 247 MB | 5.8 GiB, plus turn cost | 1.3 GiB, plus turn cost | 13 to 60 MiB, plus turn cost |
-| 25 | 1.58 GiB | 142 to 247 MB | 5.8 GiB, plus turn cost | 1.3 GiB, plus turn cost | 13 to 60 MiB, plus turn cost |
+| 5 | 0.60 GiB | 10 to 27 MB | 5.8 GiB, plus turn cost | 1.3 GiB, plus turn cost | 13 to 60 MiB, plus turn cost |
+| 10 | 0.85 GiB | 10 to 27 MB | 5.8 GiB, plus turn cost | 1.3 GiB, plus turn cost | 13 to 60 MiB, plus turn cost |
+| 25 | 1.58 GiB | 10 to 27 MB | 5.8 GiB, plus turn cost | 1.3 GiB, plus turn cost | 13 to 60 MiB, plus turn cost |
 
 Substrate memory is the control plane, two idle workers at about 10 MiB each, and 50 MiB per turn
 in flight. Its storage is 100 suspended sessions of 1 to 20 turns plus one golden snapshot; the pods
 need none of that, and hold their memory instead.
 
 Against equal isolation, Substrate uses less memory at every load, and the gap grows with every
-session held open, because a waiting session costs megabytes of storage rather than tens of
+session held open, because a waiting session costs kilobytes of storage rather than tens of
 megabytes of memory. Against runc pods, the memory break-even is around 20 turns in flight per 100 open sessions. Against a pod per agent, Substrate always costs more, and buys
 isolation per session with it.
 
@@ -3712,18 +3716,21 @@ echo "worker memory peak:    ${PEAK} MiB, up to ${PEAK_RUNNING} turns in flight"
 echo "worker memory after:   ${AFTER} MiB, running actors now: $(running_actors)"
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-worker memory before:  118 MiB, 0 turns in flight
-worker memory peak:    336 MiB, up to 4 turns in flight
-worker memory after:   119 MiB, running actors now: 0
+worker memory before:  84 MiB, 0 turns in flight
+worker memory peak:    303 MiB, up to 4 turns in flight
+worker memory after:   49 MiB, running actors now: 0
 ```
 
-Memory rises with the turns in flight and falls back when they end. The four sessions are
-still there, suspended, and hold no memory now. A sample can miss the very top of the curve, so treat
+Memory rises with the turns in flight and falls back when they end, though not always to where it
+started: on this release the workers kept up to about 40 MiB more after a burst, and over three
+bursts in a row that did not grow. The four sessions are still there, suspended, and hold no memory
+now. A sample can miss the very top of the curve, so treat
 the peak as a lower bound. The reference run held actors running deliberately and measured about
-50 MiB each: 47 to 55 MiB per actor from 2 to 64 running, on one worker, 2026-10-14.
+50 MiB each: 47 to 55 MiB per actor from 2 to 64 running, on one worker, 2026-10-14, on
+1.0.0-alpha10.
 
 Those turns also used CPU, which is what actually limits a node. In a reference run on 1.0.0-alpha8
 (2026-10-11; not repeated on this release), with real model calls on one worker, the platform's own
@@ -3743,67 +3750,62 @@ echo "sessions in Substrate: $(kubectl-ate get actors -a kagent -o json | jq '.a
 PV_PATH=$(kubectl get pv "$(kubectl get pvc rustfs-data -n ate-system -o jsonpath='{.spec.volumeName}')" \
   -o jsonpath='{.spec.hostPath.path}{.spec.local.path}')
 echo "-- snapshot store, on disk: $(docker exec "${KIND_CLUSTER_NAME}-control-plane" du -sh "$PV_PATH" | cut -f1) of ${SNAPSHOT_STORE_SIZE}"
-echo "-- session snapshots atelet uploaded in the last 15 minutes (uncompressed, MB per snapshot):"
+echo "-- session snapshots atelet uploaded in the last 15 minutes (uncompressed, KB per snapshot):"
 kubectl logs -n ate-system daemonset/atelet --since=15m \
   | jq -r 'select(.msg == "Compressed zstd upload" and (.object | test("/atespaces/kagent/actors/")))
       | [(.object | split("/snapshots/")[1] | split("/")[0]), .logical_bytes] | @tsv' \
-  | awk '{t[$1] += $2} END {for (k in t) printf "%.1f\n", t[k] / 1e6}' | sort -n | uniq -c
+  | awk '{t[$1] += $2} END {for (k in t) printf "%.1f\n", t[k] / 1e3}' | sort -n | uniq -c
 echo "-- PostgreSQL, by schema:"
 kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U postgres -d kagent -At -c \
   "select schemaname || ': ' || pg_size_pretty(sum(pg_total_relation_size(relid))) from pg_statio_user_tables where schemaname in ('kagent','substrate','enterprise') group by schemaname order by 1"
 echo "-- actor directories on the node: $(docker exec "${KIND_CLUSTER_NAME}-control-plane" sh -c 'ls /var/lib/ate/actors | wc -l') ($(docker exec "${KIND_CLUSTER_NAME}-control-plane" du -sh /var/lib/ate/actors | cut -f1))"
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
-sessions in Substrate: 15
--- snapshot store, on disk: 29M of 2Gi
--- session snapshots atelet uploaded in the last 15 minutes (uncompressed, MB per snapshot):
-   2 13.5
-   1 13.6
-   1 15.4
-   1 16.2
-   1 16.4
-   1 17.3
-   1 17.4
-   1 17.6
+sessions in Substrate: 17
+-- snapshot store, on disk: 5.9M of 1Gi
+-- session snapshots atelet uploaded in the last 15 minutes (uncompressed, KB per snapshot):
+  11 38.9
 -- PostgreSQL, by schema:
-kagent: 2616 kB
-substrate: 848 kB
--- actor directories on the node: 19 (764K)
+kagent: 2656 kB
+substrate: 976 kB
+-- actor directories on the node: 21 (844K)
 ```
 
-The store's directory on the node is the actual compressed size, which the fence from Step 23 does
-not affect. Each upload line is one checkpoint: a session's memory image is most of it, so even
-a one-turn session's snapshot is megabytes uncompressed. There are more actor directories on the
-node than sessions in Substrate: the difference is sessions deleted since Step 9, whose
-directories stay.
+The store's directory on the node is the space the volume actually uses, which the fence from Step
+23 does not affect. Each upload line is one checkpoint of a session's data directory, tens of
+kilobytes before compression: no memory image is uploaded for a session on this release (Step 11).
+There are more actor directories on the node than sessions in Substrate: the difference is
+sessions deleted since Step 9, whose directories stay.
 
 | Where | What | Grows |
 |---|---|---|
-| Snapshot store | The session's memory image and session data, compressed | One snapshot per session, replaced at each turn; by far the largest |
-| PostgreSQL | Every task event of every session (`kagent`), and Substrate's actor records (`substrate`) | With every turn |
+| Snapshot store | The session's data directory, compressed | One snapshot per session, replaced at each turn |
+| PostgreSQL | Every task event of every session (`kagent`), and Substrate's actor records (`substrate`) | With every turn; the largest part of a long session |
 | The worker node | One directory per actor ever placed there | One per session, never removed (Step 15) |
 
-**Reference measurements** for short turns, three sessions at each length, 2026-10-14. The
-store figure is the compressed objects of the session's one snapshot; the PostgreSQL figures are
-the growth across the three, divided by three, in whole 8 KiB pages, so they are coarse:
+**Reference measurements** for short turns, three sessions at each length, on this release,
+2026-10-24. The store figure is what the session's snapshot takes on the store's volume; the
+object itself is 3 to 6 KB, and the rest is the store's directories and metadata. The PostgreSQL
+figures are the growth across the three, divided by three, in whole 8 KiB pages, so they are coarse:
 
-| Turns in the session | Snapshot in the store | kagent's tables | Substrate's tables | Total, with the node directory |
-|---|---|---|---|---|
-| 1 | 1.36 to 1.40 MB | 2.7 KB | 2.7 KB | 1.41 to 1.45 MB |
-| 5 | 1.77 to 1.82 MB | 65.5 KB | 5.5 KB | 1.88 to 1.93 MB |
-| 20 | 2.18 to 2.21 MB | 163.8 KB | 43.7 KB | 2.43 to 2.46 MB |
+| Turns in the session | Snapshot store, on disk | Data directory, uncompressed | kagent's tables | Substrate's tables | Total, with the node directory |
+|---|---|---|---|---|---|
+| 1 | 28 KiB | 38.9 KB | 13.7 KB | 2.7 KB | 86 KB |
+| 5 | 28 KiB | 38.9 KB | 27.3 KB | 19.1 KB | 116 KB |
+| 20 | 32 KiB | 55.3 KB | 131.1 KB | 43.7 KB | 249 KB |
 
-Plus about 40 KiB of node directory per session, and 1.06 MB of golden snapshot per agent. A
-session that was resumed once with no turn, as in Step 13, also stores a memory image: 1.07 MB.
-Prompt content dominates real sizes, so treat these as floors.
+The total includes the node directory, about 40 KiB per session (Step 15). Each agent's golden
+snapshot adds about 1.7 MB to the store. Prompt content dominates real sizes, so treat these as
+floors.
 
-**Projected from those measured constants:** 1,000 suspended sessions need 1.4 to 2.5 GB across
-the store, PostgreSQL and node directories, and 10,000 need 14 to 25 GB, while needing no memory at
-all until someone sends a message. Nearly all of it is the snapshot store, so size its volume from
-this (Step 5).
+**Projected from those measured constants:** 1,000 suspended sessions need 86 to 249 MB across the
+store, PostgreSQL and node directories, and 10,000 need 0.9 to 2.5 GB, while needing no memory at
+all until someone sends a message. The snapshot store is the smaller part, 28 to 32 MB per 1,000
+sessions: PostgreSQL grows fastest with turns, and the node directories are never removed. Size
+PostgreSQL's volume and the node's disk from this as well as the store (Step 5).
 
 ### Step 29: Size the worker pool for concurrent turns
 
@@ -3817,13 +3819,13 @@ echo "node CPU: $(kubectl get nodes -o jsonpath='{.items[0].status.allocatable.c
 kubectl-ate get workers
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 node CPU: 6, memory: 12220312Ki
 NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                      AGE
-58d3b768-2ea5-413e-bac2-d02731a5a6a7   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-5d55b7f7c9-w2qzl   5m35s
-38340333-3e7b-4208-a980-377a967fc5ea   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-5d55b7f7c9-z6hz7   5m35s
+f3258336-43dc-452d-aab3-40783548edd4   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-n69lv   5m48s
+5fc42917-c433-4615-b74d-e6281f0a9d0d   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-r2tfl   5m48s
 ```
 
 Each worker advertises the whole node and room for 1,000 actors, and actors request no CPU or
@@ -3834,8 +3836,8 @@ Nothing in admission stops it; the node's CPU does. Size for turns in flight:
 |---|---|
 | Peak turns in flight | Yours to estimate: sessions active at the busiest moment, not sessions open |
 | Turns per node before latency doubles | 4 per 6-vCPU node, measured on 1.0.0-alpha8; scale with vCPU as a starting point (**projected**) |
-| Memory per turn in flight | about 50 MiB, measured |
-| Fixed control plane | 346.7 MiB per cluster, measured |
+| Memory per turn in flight | about 50 MiB, measured on 1.0.0-alpha10 |
+| Fixed control plane | 346.7 MiB per cluster, measured on 1.0.0-alpha10 |
 
 For 10 turns in flight at the busiest moment: 10 ÷ 4 rounds up to 3 nodes of this size, and memory
 is about 0.35 GiB plus 0.5 GiB for the turns, which every node here has many times over. Storage
@@ -3869,7 +3871,7 @@ Check the node's headroom before changing worker resources:
 kubectl describe node | sed -n '/Allocated resources/,/Events/p' | sed '$d'
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 Allocated resources:
@@ -3886,8 +3888,8 @@ Allocated resources:
 ```
 
 A worker's new request must fit inside what is not yet requested, or the rollout leaves a worker
-Pending. On the node above, 84% of the CPU is already requested, so about 940m is free: a worker
-request of 1 CPU would leave its replacement Pending, with one worker already gone.
+Pending. On the node above, 4830m of the 6 CPUs is already requested, so about 1170m is free: a
+worker request larger than that would leave its replacement Pending, with one worker already gone.
 
 The change that never removes capacity is adding a worker. Raise the replica count, wait for the new
 worker, and check it serves:
@@ -3910,19 +3912,19 @@ forwards
 kagent_send assistant "Reply with exactly: three workers"
 ```
 
-**Verified on 2026-10-16:**
+**Verified on 2026-10-24:**
 
 ```text
 NAME             DESIRED   REPLICAS   READY   AGE
-kagent-default   3         3          3       6m20s
+kagent-default   3         3          3       6m38s
 NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                      AGE
-22d8f4bb-e8df-4368-963e-c02ef4a49eda   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-5d55b7f7c9-6qfhq   1s
-58d3b768-2ea5-413e-bac2-d02731a5a6a7   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-5d55b7f7c9-w2qzl   5m40s
-38340333-3e7b-4208-a980-377a967fc5ea   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-5d55b7f7c9-z6hz7   5m40s
+f3258336-43dc-452d-aab3-40783548edd4   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-n69lv   5m53s
+5fc42917-c433-4615-b74d-e6281f0a9d0d   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-r2tfl   5m53s
+20456dff-dba3-4391-991f-eed16062e2ed   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-s8ftk   1s
 deployment "kagent-controller" successfully rolled out
 deployment "kagent-ui" successfully rolled out
 forwards up: controller 18083, ui 14000
-TASK_STATE_COMPLETED	01a142ca-b80b-7365-9b24-657d63d169e6	three workers
+TASK_STATE_COMPLETED	01a16ff1-075a-7b91-ab2e-5a06c45eef86	three workers
 ```
 
 `--reuse-values` keeps everything earlier steps set, including the OIDC issuer; without it, Helm
@@ -4169,13 +4171,14 @@ curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/cl
 ```
 
 - **Treat the snapshot store as holding every session in readable form.** Each snapshot is the
-  actor's memory as well as its data, compressed, not encrypted: anything the runtime held in memory
-  is in it (Step 18). Keep the NetworkPolicy from Step 23, keep the credentials out of anything you
+  session's data directory, its database included, compressed, not encrypted (Step 18). On this
+  release a session's memory is not saved, but each agent's golden snapshot is a full memory image. Keep the NetworkPolicy from Step 23, keep the credentials out of anything you
   commit, and if you use an external store, turn on the bucket's default encryption. An external
   store can be wired for atelet but not for ate-api through the chart (Steps 14 and 23).
-- **Size the snapshot store for the sessions you keep.** Each suspended session takes 1.4
-  to 2.5 MB of it on this release, and each agent 1.06 MB (Step 28); nothing removes a session
-  that is never resumed or deleted. Set the size at install (`rustfs.storageSize`, Step 5): changing
+- **Size storage for the sessions you keep.** On this release each suspended session takes 28 to
+  32 KiB of the snapshot store, 16 to 175 KB of PostgreSQL and 40 KiB of node disk, and each agent
+  1.7 MB of the store (Step 28); nothing removes a session that is never resumed or deleted, and
+  nothing removes a node directory at all. Set the size at install (`rustfs.storageSize`, Step 5): changing
   it later needs a storage class that supports volume expansion, and an upgrade on one that does not
   fails and leaves the release `failed`. What Substrate does when the store is full was not tested.
 - **Decide on content capture per runtime, and keep it off unless you need it.**
