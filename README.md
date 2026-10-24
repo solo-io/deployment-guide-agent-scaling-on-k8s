@@ -116,6 +116,7 @@ Each certified state of the guide is tagged:
 | `certified-alpha8` | kagent-enterprise 1.0.0-alpha8 |
 | `certified-alpha10` | kagent-enterprise 1.0.0-alpha10 |
 | `certified-alpha10-r2` | kagent-enterprise 1.0.0-alpha10, with tracing, paste-safe blocks in bash and zsh, and no dependency on this repository |
+| `certified-alpha11` | kagent-enterprise 1.0.0-alpha11, with access policies in place of roles |
 
 The guide documents a validated deployment at a point in time. It does not cover upgrade paths
 between product versions; a fresh install of the pinned set is the only path it verifies.
