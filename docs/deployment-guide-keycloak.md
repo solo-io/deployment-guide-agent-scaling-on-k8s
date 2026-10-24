@@ -4219,9 +4219,8 @@ curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/cl
 - **Rotate the CA pools before they expire.** They are valid for one year from Step 3 and nothing
   rotates them; when they expire, nothing issued from them validates. Rotation replaces the pools and
   every trust root issued from them, and restarts PostgreSQL, every Substrate component, the workers
-  and the controller; the order matters (Attachment C.10). Verified on 1.0.0-alpha10, not repeated on
-  this release: new sessions and sessions suspended before the rotation both work after it, with
-  their context.
+  and the controller; the order matters (Attachment C.10). Verified on this release: new sessions and
+  sessions suspended before the rotation both work after it, with their context.
 - **Restart the worker pool after a node restarts.** Turns on a restarted node are refused until its
   workers are restarted and registered again (Attachment C.23).
 - **Plan node disk and inodes for actor directories.** Every session ever placed on a node
