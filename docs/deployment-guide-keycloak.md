@@ -1781,12 +1781,14 @@ PostgreSQL hold a second copy of each session's events.
 
 **In the UI.** Open the agent, open the session's menu in the chat list (the three dots beside
 it), choose **Delete chat**, and confirm with **Delete**. The UI asks kagent to delete the session,
-and kagent deletes its actor. Verified on 1.0.0-alpha10 with Keycloak sign-in (Step 24), as a writer
-deleting a session they had started in the browser; not yet re-checked on this release.
+and kagent deletes its actor. Verified on this release with Keycloak sign-in (Step 24), as a writer
+deleting a session they had started in the browser: kagent marked the session deleted, and its actor
+was gone from Substrate.
 
-The chat list shows every session with the agent, including ones other users and scripts started.
-Only your own open: anyone else's answers "Session not found" when you open or delete it, because
-the controller treats a session as visible only to its creator (Step 25).
+The chat list shows your own sessions with the agent, including ones you started from a script:
+signed in as `writer` on this release, it listed the writer's sessions from Steps 24 and 25 and none
+of the other users'. A session belongs to the user who started it, and nobody else can continue it
+(Step 25).
 
 **From a script.** kagent offers no supported CLI or API for this: the session API is gRPC and
 gRPC-Web only, with no JSON form and no server reflection, and the open-source `kagent` CLI sends no
@@ -3480,10 +3482,8 @@ Keycloak at `keycloak.localhost`; sign in as `writer` with `KAGENT_WRITER_PASSWO
 `~/.kagent-ui-credentials` (`auto-build/.env.local` under auto-build). To copy it without displaying
 it: `grep '^KAGENT_WRITER_PASSWORD=' ~/.kagent-ui-credentials | cut -d= -f2- | tr -d '\n' | pbcopy`.
 The UI
-returns signed in, with the agents listed. Sign out returns you to the UI. Verified on 1.0.0-alpha10
-in a browser, with the same realm and settings, and not yet re-checked on this release; the browser
-half is not part of the scripted run. On this release the redirect to Keycloak's sign-in page was
-checked.
+returns signed in, with the agents listed. Sign out returns you to the UI. Verified on this release
+in a browser, with the same realm and settings; the browser half is not part of the scripted run.
 
 ### Step 25: Who can see and change agents
 
@@ -3564,7 +3564,7 @@ A session still belongs to the user who started it. Anyone else who sends a mess
 admin included, is answered `task not found` (Step 31 checks it).
 
 > [!WARNING]
-> **Every signed-in user can list every user's sessions.** The session API returns all creators' sessions to any signed-in user, with Step 24's policies in place: observed on this release as `reader` and as `norole`. The list shows session IDs, who started them and when; the sessions themselves stay closed to anyone but their creator. Treat who-talks-to-which-agent as visible to everyone who can sign in.
+> **Every signed-in user can list every user's sessions.** The UI's chat list shows only your own, but the session API returns every creator's sessions to any signed-in user who asks for them, with Step 24's policies in place: observed on this release as `reader` and as `norole`. The sessions themselves stay closed to anyone but their creator. Treat who-talks-to-which-agent as visible to everyone who can sign in.
 
 > [!WARNING]
 > **Every signed-in user can read every user's traces.** kagent's tracing API (Step 12), which the UI's tracing pages read, answered for the writer's session as `reader` and as `norole`, with Step 24's policies in place. A trace holds who called which agent, the token counts, every tool call's arguments and response (Step 21), and, for the Claude Code runtime with content capture on, the prompt and the reply. Protecting a session does not protect its trace. Keep content capture off, and treat traces as readable by everyone who can sign in.
