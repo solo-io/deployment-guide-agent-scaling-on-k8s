@@ -140,7 +140,7 @@ Follow Up and Running with the blocks below in place of the ones they name. Ever
 and Running is unchanged.
 
 **Verified on:** a throwaway kind cluster `compat11` (kind 0.32.0, `kindest/node:v1.35.0`), beside
-one other cluster on the same Docker host, 2026-10-24 22:34 to 22:38 UTC. Up and Running was run
+one other cluster on the same Docker host, 2026-10-26 00:56 to 00:59 UTC. Up and Running was run
 verbatim through Step 9 with these blocks substituted, in one pass (`auto-build/run.sh --attachment
 docs/attachments.md --to step-9-gateway-log`), on the guide's versions.
 
@@ -172,7 +172,7 @@ kubectl api-resources --api-group=certificates.k8s.io
 kubectl get --raw /metrics | grep -E 'kubernetes_feature_enabled\{name="(ClusterTrustBundle|ClusterTrustBundleProjection|PodCertificateRequest)"'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 NAME                         SHORTNAMES   APIVERSION               NAMESPACED   KIND
@@ -219,7 +219,7 @@ openssl x509 -in "$WORK/tls.crt" -noout -subject -enddate
 rm -rf "$WORK"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 secret/ate-ca-server-tls created
@@ -233,7 +233,7 @@ configmap/ate-ca-server-ca created
 configmap/ate-ca-podidentity-trust created
 configmap/ate-ca-servicedns-trust created
 subject=CN=ate-ca.podcertificate-controller-system.svc
-notAfter=Oct 24 22:34:55 2027 GMT
+notAfter=Oct 26 00:56:29 2027 GMT
 ```
 
 These ConfigMaps are not kept in step by anything. When you rotate the CA pools, publish the old and
@@ -256,7 +256,7 @@ kubectl rollout status deployment -n podcertificate-controller-system --timeout=
 kubectl get pods -n podcertificate-controller-system
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 Release "substrate-podcert" does not exist. Installing it now.
@@ -267,7 +267,7 @@ DESCRIPTION: Install complete
 Waiting for deployment "podcertificate-controller" rollout to finish: 0 of 1 updated replicas are available...
 deployment "podcertificate-controller" successfully rolled out
 NAME                                         READY   STATUS    RESTARTS   AGE
-podcertificate-controller-747c48cdc4-62p7c   1/1     Running   0          13s
+podcertificate-controller-747c48cdc4-5hk6g   1/1     Running   0          12s
 ```
 
 ### B.4 PostgreSQL with password logins (in place of `postgres-install` and `step-4-postgres-check`)
@@ -417,7 +417,7 @@ unset PW_K_OWNER PW_K_RW PW_OWNER PW_RW
 rm -rf "$PG_SETUP"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 secret/kagent-postgresql-tls created
@@ -444,7 +444,7 @@ kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U pos
 kubectl get configmap kagent-postgresql -n kagent -o jsonpath='{.data.pg_hba\.conf}'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 enterprise owned by kagent_owner
@@ -491,7 +491,7 @@ echo "-- kubectl-ate:"
 kubectl-ate get actors -A 2>&1 | tail -1 || true
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 deployment.apps/ate-api-server condition met
@@ -502,16 +502,16 @@ deployment.apps/k8s-credential-provider condition met
 deployment.apps/rustfs condition met
 daemon set "atelet" successfully rolled out
 NAME                                       READY   STATUS      RESTARTS   AGE
-ate-api-server-846494d677-d6lxj            2/2     Running     0          48s
-ate-api-server-846494d677-hvqvf            2/2     Running     0          48s
-ate-controller-57fd587bfc-sh4dn            2/2     Running     0          49s
-atelet-mmxkh                               2/2     Running     0          49s
-atenet-egress-59c54c45f-ncgf4              2/2     Running     0          49s
-atenet-router-55759bb48b-tnqwt             2/2     Running     0          49s
-k8s-credential-provider-7ff9c959f6-jw9kz   2/2     Running     0          49s
-rustfs-7b5d94bc9b-djhjs                    1/1     Running     0          49s
-rustfs-bucket-init-wmq5x                   0/1     Completed   0          49s
-{"time":"2026-10-24T22:35:10.431353242Z","level":"WARN","msg":"certificates.k8s.io ClusterTrustBundle API is not served; PodCertificateRequest signers disabled, publishing EnterpriseSubstrateClusterTrustBundles"}
+ate-api-server-846494d677-79wj8            2/2     Running     0          51s
+ate-api-server-846494d677-gsbpd            2/2     Running     0          51s
+ate-controller-57fd587bfc-9whzp            2/2     Running     0          51s
+atelet-rw7p9                               2/2     Running     0          51s
+atenet-egress-59c54c45f-8l2tx              2/2     Running     0          51s
+atenet-router-55759bb48b-cdnvp             2/2     Running     0          51s
+k8s-credential-provider-7ff9c959f6-s28wc   2/2     Running     0          51s
+rustfs-7b5d94bc9b-dnr5h                    1/1     Running     0          51s
+rustfs-bucket-init-8gjpj                   0/1     Completed   0          51s
+{"time":"2026-10-26T00:56:42.88350862Z","level":"WARN","msg":"certificates.k8s.io ClusterTrustBundle API is not served; PodCertificateRequest signers disabled, publishing EnterpriseSubstrateClusterTrustBundles"}
 -- kubectl-ate:
 Error: failed to connect to ate-api-server: failed to discover ClusterTrustBundle API: neither v1 nor v1beta1 ClusterTrustBundle is served
 ```
@@ -573,7 +573,7 @@ kubectl get deployment kagent-controller -n kagent -o jsonpath='{range .spec.tem
 kubectl get workerpool -n kagent
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 Release "kagent" does not exist. Installing it now.
@@ -584,7 +584,7 @@ DESCRIPTION: Install complete
 (Helm's release notes omitted)
 ate-ca-agent controller idp
 NAME             DESIRED   REPLICAS   READY   AGE
-kagent-default   2         2          2       61s
+kagent-default   2         2          2       62s
 ```
 
 The sidecar image is pinned by digest to the same Substrate release as `WORKER_IMAGE`.
@@ -599,7 +599,7 @@ enterprise gateway either way.
 kubectl-ate get egress-policy "session-${FIRST_CONTEXT}" --atespace kagent 2>&1 | tail -1 || true
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 Error: failed to connect to ate-api-server: failed to discover ClusterTrustBundle API: neither v1 nor v1beta1 ClusterTrustBundle is served
@@ -614,7 +614,7 @@ product defect and go away when it is fixed.
 
 The fix commands are written to be run as they are, in your guide shell. On this release,
 `c-rotate-pools` (C.10), `c-add-to-group` (C.20) and `c-restart-workers` (C.23) were run on
-2026-10-24 on a verification cluster built by the guide (`auto-build/run.sh --attachment
+2026-10-24, and `c-cancel-stuck-turns` (C.24) on 2026-10-25, on verification clusters built by the guide (`auto-build/run.sh --attachment
 docs/attachments.md --only ...`). The others were run on 1.0.0-alpha10 on 2026-10-14, on a
 verification cluster after Validate had passed there, and not repeated.
 
@@ -976,3 +976,32 @@ new ones registered, and the next turn completed. Restarting the node restarts K
 re-imports the realm with `kagent-cli` disabled (A.1), so scripts get `401` until Step 24's
 `keycloak-enable-kagent-cli` block runs again.
 
+**C.24 A turn never ends after a team's budget runs out.** *Reproduced.* The enterprise gateway
+refuses the model call with `429` and `Retry-After` set to the time left in the budget's window, and
+the kagent runtime waits for it: the turn stays `TASK_STATE_WORKING`, its actor keeps running, a client
+waiting on it times out, and another message into the session is refused with `resource conflict`.
+Suspending the actor does not end the turn, and deleting the session leaves the turn recorded as
+working. Fix: raise the budget or let its window pass, then cancel each stuck turn with A2A's
+`CancelTask` on its agent's endpoint, as the user who started it: a turn belongs to its session's
+creator, and anyone else is answered `task not found`. This finds turns working for more than 10
+minutes and cancels them as the user in `KAGENT_USER` (default `writer`); run it once for each user
+whose turns are stuck. A turn started through the bundled login before Step 24 could not be cancelled
+after it, as `writer` or as `admin`:
+
+```bash run id=c-cancel-stuck-turns when=manual
+kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U postgres -d kagent -At -F ' ' -c \
+  "select a.agent_name, t.id from kagent.session_task t
+     join kagent.session_record r on r.history_id = t.history_id
+     join kagent.agent_revision a on a.revision = r.prepared_revision
+   where t.state = 'TASK_STATE_WORKING' and t.status_timestamp < now() - interval '10 minutes'" \
+  | while read -r agent task; do
+      printf '%s %s: ' "$agent" "$task"
+      curl -sS --max-time 30 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/${agent}" \
+        -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' \
+        -d "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"CancelTask\",\"params\":{\"id\":\"${task}\"}}" \
+        | jq -r '.result.status.state // .error.message'
+    done
+```
+
+A cancelled turn's session takes new messages again, with the cancelled request still in its
+history.

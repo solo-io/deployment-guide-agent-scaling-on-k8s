@@ -1,8 +1,8 @@
 # Deployment Guide for Operating, Isolating, and Scaling Agent Workloads on Kubernetes
 
-**Updated:** October 24th, 2026
+**Updated:** October 26th, 2026
 
-**Certified against:** kagent-enterprise 1.0.0-alpha11, Agent Substrate (substrate-enterprise) 0.5.0-alpha4-da3c2e5, Solo Enterprise for agentgateway v2026.7.1
+**Certified against:** kagent-enterprise 1.0.0-alpha11, Agent Substrate (substrate-enterprise) 0.5.0-alpha4-da3c2e5, Solo Enterprise for agentgateway v2026.10.1
 
 ## Introduction
 
@@ -77,7 +77,7 @@ every version, chart and image below is part of that set:
 | kubectl-ate | v0.5.0-alpha2 |
 | kagent runtime images (`golang-adk`, `claude-harness`) | 1.0.0-alpha14, pinned by digest |
 | PostgreSQL | 18.6 (`postgres:18.6-alpine3.23`), pinned by digest |
-| Solo Enterprise for agentgateway | v2026.7.1 |
+| Solo Enterprise for agentgateway | v2026.10.1 |
 | Kubernetes | 1.35.0 on kind 0.32.0 |
 
 Do not mix versions across this set. The three Substrate charts and the worker image come from one
@@ -111,7 +111,7 @@ Then set these. Every command below uses them.
 export KAGENT_VERSION=1.0.0-alpha11
 export SUBSTRATE_VERSION=0.5.0-alpha4-da3c2e5
 export KUBECTL_ATE_VERSION=v0.5.0-alpha2
-export AGENT_GATEWAY_VERSION=v2026.7.1
+export AGENT_GATEWAY_VERSION=v2026.10.1
 export GATEWAY_API_VERSION=v1.6.1
 
 # The cluster. The node image is pinned by digest.
@@ -249,7 +249,7 @@ declare one agent, and prove its first answer went through the gateway.
 sessions each run in their own sandbox, and whose every model call is authenticated and
 recorded by one gateway.
 
-**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-24 22:54 to 23:32 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 18 of 18. Every output block in this guide comes from the last run, under bash.
+**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-26 00:12 to 00:55 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 18 of 18. Every output block in this guide comes from the last run, under bash.
 
 ### Step 1: Create the cluster
 
@@ -282,7 +282,7 @@ kubectl api-resources --api-group=certificates.k8s.io
 kubectl get --raw /metrics | grep -E 'kubernetes_feature_enabled\{name="(ClusterTrustBundle|ClusterTrustBundleProjection|PodCertificateRequest)"'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 NAME                         SHORTNAMES   APIVERSION                    NAMESPACED   KIND
@@ -332,7 +332,7 @@ Check what arrived:
 kubectl get crd -o name | grep -E 'kagent\.dev|ate\.dev|ate\.solo\.io' | sort
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 customresourcedefinition.apiextensions.k8s.io/agents.api.kagent.dev
@@ -409,7 +409,7 @@ ca_pool  actor-id-ca-pool     ate-system
 ca_pool  egress-mitm-ca-pool  ate-system --key-type=ECDSAP256
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 namespace/podcertificate-controller-system created
@@ -474,7 +474,7 @@ EOF
 kubectl rollout status deployment/podcertificate-controller -n podcertificate-controller-system --timeout=300s
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 Release "substrate-podcert" does not exist. Installing it now.
@@ -546,7 +546,7 @@ kubectl rollout status deployment/kagent-postgresql -n kagent --timeout=300s
 rm -rf "$PG_SETUP"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 postgres.yaml: OK
@@ -582,7 +582,7 @@ kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U pos
 kubectl get configmap kagent-postgresql -n kagent -o jsonpath='{.data.pg_hba\.conf}'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 enterprise owned by kagent_owner
@@ -677,7 +677,7 @@ kubectl get pvc rustfs-data -n ate-system -o jsonpath='snapshot store volume: {.
 kubectl-ate get actors -A
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 deployment.apps/ate-api-server condition met
@@ -688,15 +688,15 @@ deployment.apps/k8s-credential-provider condition met
 deployment.apps/rustfs condition met
 daemon set "atelet" successfully rolled out
 NAME                                      READY   STATUS      RESTARTS   AGE
-ate-api-server-5494df4d67-49kj2           1/1     Running     0          45s
-ate-api-server-5494df4d67-6w87q           1/1     Running     0          45s
-ate-controller-7d9c95cd77-2dft8           1/1     Running     0          45s
-atelet-l47bj                              1/1     Running     0          45s
-atenet-egress-68b8df7b94-wmb6l            1/1     Running     0          45s
-atenet-router-8f46bdc9d-48v8x             1/1     Running     0          45s
-k8s-credential-provider-d9f95b69f-nb984   1/1     Running     0          45s
-rustfs-7b5d94bc9b-8b8qx                   1/1     Running     0          45s
-rustfs-bucket-init-72tw9                  0/1     Completed   0          45s
+ate-api-server-5494df4d67-jsft6           1/1     Running     0          46s
+ate-api-server-5494df4d67-n4j66           1/1     Running     0          46s
+ate-controller-7d9c95cd77-x9qjz           1/1     Running     0          46s
+atelet-qbm7b                              1/1     Running     0          46s
+atenet-egress-68b8df7b94-9ngjv            1/1     Running     0          46s
+atenet-router-8f46bdc9d-dr9nr             1/1     Running     0          46s
+k8s-credential-provider-d9f95b69f-67fgw   1/1     Running     0          46s
+rustfs-7b5d94bc9b-zp6th                   1/1     Running     0          46s
+rustfs-bucket-init-qnc5x                  0/1     Completed   0          46s
 snapshot store volume: 1Gi requested, 1Gi bound
 ATESPACE   NAME   TEMPLATE   STATE   WORKER POD   WORKER IPS   VERSION   AGE
 ```
@@ -790,21 +790,21 @@ kubectl get workerpool -n kagent
 kubectl logs -n kagent deployment/kagent-controller -c controller | grep -o '"state":"[A-Za-z]*"' | sort | uniq -c
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-NAME                                                 READY   STATUS    RESTARTS   AGE
-kagent-clickhouse-shard0-0                           1/1     Running   0          62s
-kagent-controller-6497d676cb-l9fw6                   2/2     Running   0          62s
-kagent-default-577c7bd4d6-8qvxm                      1/1     Running   0          62s
-kagent-default-577c7bd4d6-v5zqs                      1/1     Running   0          62s
-kagent-postgresql-5fb9d7f7d7-kttjw                   2/2     Running   0          2m18s
-kagent-ui-788c7fc454-9lpjd                           1/1     Running   0          62s
-kmcp-enterprise-controller-manager-f4d57d7db-9bxht   1/1     Running   0          62s
-solo-enterprise-k8sobjects-856cd7bf5b-5kf82          1/1     Running   0          62s
-solo-enterprise-telemetry-collector-0                1/1     Running   0          62s
+NAME                                                 READY   STATUS    RESTARTS      AGE
+kagent-clickhouse-shard0-0                           1/1     Running   0             76s
+kagent-controller-6497d676cb-mr6z8                   2/2     Running   1 (45s ago)   76s
+kagent-default-577c7bd4d6-kkdmh                      1/1     Running   0             76s
+kagent-default-577c7bd4d6-vshvw                      1/1     Running   0             76s
+kagent-postgresql-5fb9d7f7d7-8hd77                   2/2     Running   0             2m25s
+kagent-ui-788c7fc454-k7nz2                           1/1     Running   0             76s
+kmcp-enterprise-controller-manager-f4d57d7db-7nmhk   1/1     Running   0             76s
+solo-enterprise-k8sobjects-856cd7bf5b-gln4b          1/1     Running   0             76s
+solo-enterprise-telemetry-collector-0                1/1     Running   0             76s
 NAME             DESIRED   REPLICAS   READY   AGE
-kagent-default   2         2          2       62s
+kagent-default   2         2          2       76s
    1 "state":"Licensed"
    1 "state":"Warning"
 ```
@@ -871,10 +871,11 @@ kubectl wait --for=condition=Programmed --timeout=180s gateway/agentgateway-prox
 kubectl rollout status deployment/agentgateway-proxy -n agentgateway-system --timeout=180s
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 gateway.gateway.networking.k8s.io/agentgateway-proxy condition met
+Waiting for deployment "agentgateway-proxy" rollout to finish: 0 out of 1 new replicas have been updated...
 Waiting for deployment "agentgateway-proxy" rollout to finish: 0 of 1 updated replicas are available...
 deployment "agentgateway-proxy" successfully rolled out
 ```
@@ -1006,7 +1007,7 @@ echo -n "consumer key: "; curl -sS http://127.0.0.1:18081/v1/messages \
 kill $GW_PF
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 no key:       401
@@ -1045,7 +1046,7 @@ kubectl wait enterpriseagentgatewaypolicy/agentgateway-proxy-tracing -n agentgat
   --for=jsonpath='{.status.ancestors[0].conditions[?(@.type=="Attached")].status}'=True --timeout=60s
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 enterpriseagentgatewaypolicy.enterpriseagentgateway.solo.io/agentgateway-proxy-tracing created
@@ -1117,7 +1118,7 @@ kubectl run fence-check -n default --rm -i --restart=Never --image=busybox:1.36 
   < /dev/null
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 wget: download timed out
@@ -1241,7 +1242,7 @@ kubectl wait agent/assistant -n kagent --for=condition=Ready --timeout=300s
 kubectl get agent assistant -n kagent -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.message}{"\n"}{end}'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 agent.api.kagent.dev/assistant condition met
@@ -1302,10 +1303,10 @@ echo "$TURN"
 export FIRST_CONTEXT=$(echo "$TURN" | cut -f2)
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-TASK_STATE_COMPLETED	01a1703d-119e-73b2-b43f-2b363e23bd8e	up and running
+TASK_STATE_COMPLETED	01a175ad-cadb-79ed-a28d-86c96e7ce912	up and running
 ```
 
 `TASK_STATE_COMPLETED`, the session's ID, and the reply. An answer alone does not prove the
@@ -1319,7 +1320,7 @@ kubectl-ate get egress-policy "session-${FIRST_CONTEXT}" --atespace kagent -o js
   | jq -r '.rules[] | to_entries[0] | "\(.key)\t\(.value.hostnames[0]):\(.value.ports.numbers[0])\t\([.value.effects.replaceHeaders[]? | "\(.header) <- \(.credentialUri)"] | join(", "))"'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 http	agentgateway-proxy.agentgateway-system.svc.cluster.local:80	x-api-key <- ate-secret://k8s.io/default/kagent/kagent-gateway-consumer-key/api-key
@@ -1342,13 +1343,13 @@ kubectl logs -n agentgateway-system deployment/agentgateway-proxy --since=10m \
   | tr ' ' '\n' | grep -E '^(route|src.addr|http.status|gen_ai.usage.input_tokens|gen_ai.usage.output_tokens|endpoint)='
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-atenet-egress: 10.244.0.17
+atenet-egress: 10.244.0.9
 route=agentgateway-system/anthropic-messages
 endpoint=api.anthropic.com:443
-src.addr=10.244.0.17:54610
+src.addr=10.244.0.9:57436
 http.status=200
 gen_ai.usage.input_tokens=702
 gen_ai.usage.output_tokens=6
@@ -1377,7 +1378,7 @@ runtime.
 **What you will have that you did not have before:** a working model of the agent lifecycle on this
 platform, and the commands to see each stage of it on your own cluster.
 
-**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-24 22:54 to 23:32 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 18 of 18. Every output block in this guide comes from the last run, under bash.
+**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-26 00:12 to 00:55 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 18 of 18. Every output block in this guide comes from the last run, under bash.
 
 ### Step 10: How an agent becomes actors
 
@@ -1391,13 +1392,13 @@ kubectl-ate get actor-template -a kagent
 kubectl-ate get tags -a ate-golden
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 ATESPACE   NAME                     SANDBOX CLASS          GOLDEN TAG                             ERROR   AGE
-kagent     assistant-be37b5bba0cf   SANDBOX_CLASS_GVISOR   98727874-6730-4388-96fe-be731d497a89           10s
+kagent     assistant-215ab23d619c   SANDBOX_CLASS_GVISOR   1bde2efc-b2f6-4fdc-91f4-f6f6a5ce540d           21s
 ATESPACE     NAME                                   SCOPE                 STATE   SNAPSHOT                                                                                   CONTENT SCOPE                 AGE
-ate-golden   98727874-6730-4388-96fe-be731d497a89   TAG_SCOPE_PUBLISHED   Ready   gs://ate-snapshots/kagent/atespaces/ate-golden/tags/e839a05e-e849-42bb-a31b-ee02f86ef1ee   SNAPSHOT_CONTENT_SCOPE_FULL   4s
+ate-golden   1bde2efc-b2f6-4fdc-91f4-f6f6a5ce540d   TAG_SCOPE_PUBLISHED   Ready   gs://ate-snapshots/kagent/atespaces/ate-golden/tags/ee2a5692-fe20-4a69-a59f-eced78b6165e   SNAPSHOT_CONTENT_SCOPE_FULL   3s
 ```
 
 The template's `GOLDEN TAG` is the tag in the `ate-golden` atespace, and the tag's snapshot is a
@@ -1411,14 +1412,14 @@ kubectl-ate get actors -a kagent
 kubectl-ate get workers
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a1703d-119e-73b2-b43f-2b363e23bd8e   kagent/assistant-be37b5bba0cf   ACTOR_STATE_SUSPENDED   <none>                    5         1s
+kagent     session-01a175ad-cadb-79ed-a28d-86c96e7ce912   kagent/assistant-215ab23d619c   ACTOR_STATE_SUSPENDED   <none>                    5         1s
 NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                      AGE
-722211d6-bada-4f50-8949-161f8828668c   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-8qvxm   70s
-c3faac0d-9998-45c0-a008-6e565e728928   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-v5zqs   72s
+4ded3218-0d83-4725-8356-a62af48ff4d3   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-kkdmh   98s
+1ead8aff-0635-4b5a-8181-0730f03161ce   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-vshvw   98s
 ```
 
 Step 9's session is `SUSPENDED`, with no worker pod and no IP. It holds nothing on a worker
@@ -1467,13 +1468,13 @@ wait_suspended "$CONV"
 kubectl-ate get actor "session-${CONV}" -a kagent
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-TASK_STATE_COMPLETED	01a1703d-1636-7772-ad3f-bf1bee306116	OK.
+TASK_STATE_COMPLETED	01a175ad-cf7d-7f23-bc50-c04f1e51cfe2	OK.
 suspended (polled 0s after the reply)
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a1703d-1636-7772-ad3f-bf1bee306116   kagent/assistant-be37b5bba0cf   ACTOR_STATE_SUSPENDED   <none>                    5         0s
+kagent     session-01a175ad-cf7d-7f23-bc50-c04f1e51cfe2   kagent/assistant-215ab23d619c   ACTOR_STATE_SUSPENDED   <none>                    5         0s
 ```
 
 The actor was suspended as soon as the turn ended. **There is no idle timeout to configure.** kagent
@@ -1489,15 +1490,15 @@ wait_suspended "$CONV"
 actor_events "$CONV"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-TASK_STATE_COMPLETED	01a1703d-1636-7772-ad3f-bf1bee306116	Your project is called Larkspur.
+TASK_STATE_COMPLETED	01a175ad-cf7d-7f23-bc50-c04f1e51cfe2	Your project is called Larkspur.
 suspended (polled 0s after the reply)
-23:26:54.163	Restore timing breakdown	golden/full	84 ms
-23:26:54.748	Checkpoint timing breakdown	latest/data	38 ms
-23:26:55.079	Restore timing breakdown	latest/data	92 ms
-23:26:55.670	Checkpoint timing breakdown	latest/data	32 ms
+00:48:07.750	Restore timing breakdown	golden/full	103 ms
+00:48:08.340	Checkpoint timing breakdown	latest/data	44 ms
+00:48:08.699	Restore timing breakdown	latest/data	93 ms
+00:48:09.299	Checkpoint timing breakdown	latest/data	33 ms
 ```
 
 The agent remembered, and atelet's log shows how:
@@ -1555,27 +1556,29 @@ done
 trace_spans "$CONV"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-1652b027	57e996	51c1cb	assistant	invoke_agent assistant
-1652b027	4a392c	57e996	assistant	generate_content claude-haiku-4-5
-1652b027	d755bc	b4d7a2	agentgateway-proxy	POST /v1/messages/*
-d3845745	dc8d28	716c65	assistant	invoke_agent assistant
-d3845745	943970	dc8d28	assistant	generate_content claude-haiku-4-5
-d3845745	ba7118	db1639	agentgateway-proxy	POST /v1/messages/*
+495f060b	3cfc23	241ad8	assistant	invoke_agent assistant
+495f060b	99a25c	3cfc23	assistant	generate_content claude-haiku-4-5
+495f060b	95c988	e250cf	agentgateway-proxy	POST /v1/messages/*
+495f060b	8c04d7	95c988	agentgateway-proxy	POST api.anthropic.com:443
+4a25ce5a	c8cbee	b5acd1	assistant	invoke_agent assistant
+4a25ce5a	66c92b	c8cbee	assistant	generate_content claude-haiku-4-5
+4a25ce5a	f24564	e06bda	agentgateway-proxy	POST /v1/messages/*
+4a25ce5a	0c7b55	f24564	agentgateway-proxy	POST api.anthropic.com:443
 ```
 
 Two traces, one per turn of Step 11. In each, the agent's `invoke_agent` span holds its
 `generate_content` span, the model call, and the gateway's `POST /v1/messages/*` span carries the
-same trace ID. Once Step 22 adds a budget, the gateway's span gains an `agw.ai.budgets.outcome`
+same trace ID, with a child for the gateway's own call to the provider (`POST api.anthropic.com:443`). Once Step 22 adds a budget, the gateway's span gains an `agw.ai.budgets.outcome`
 child with the budget's decision and debit. The runtime decides which spans a turn has:
 
 | Runtime | Spans per turn | Seen in |
 |---|---|---|
 | kagent (Go ADK) | `invoke_agent`, with one `generate_content` per model call and one `execute_tool` per tool call | This step and Step 21 |
 | Claude Code | `invoke_agent`, with one `chat` per model call | Step 16 |
-| Enterprise gateway | One `POST` span per request with a child for its budget check, MCP method or tool call | Every turn through it |
+| Enterprise gateway | One `POST` span per request, with a child for its call to the provider and for its budget check, MCP method or tool call | Every turn through it |
 
 Two gaps, both on this release:
 
@@ -1604,11 +1607,11 @@ printf '\000\000\000\000\046\052\044%s' "$CONV" \
 kill "$TRACE_PF"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-   1 1652b02707bf47dcaafbe5e2d2dfe25a
-   1 d3845745f31184724eb3a41ad02e7423
+   1 495f060bb5b520610c5b59e520875299
+   1 4a25ce5a0bb049e3b77dbd6d63f8295c
    1 grpc-status: 0
 ```
 
@@ -1629,13 +1632,13 @@ kubectl logs -n agentgateway-system deployment/agentgateway-proxy --since=15m | 
   | tr ' ' '\n' | grep -E '^(route|http.status|trace.id|gen_ai.usage.input_tokens)='
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-last turn's trace: d3845745f31184724eb3a41ad02e7423
+last turn's trace: 4a25ce5a0bb049e3b77dbd6d63f8295c
 route=agentgateway-system/anthropic-messages
 http.status=200
-trace.id=d3845745f31184724eb3a41ad02e7423
+trace.id=4a25ce5a0bb049e3b77dbd6d63f8295c
 gen_ai.usage.input_tokens=718
 ```
 
@@ -1649,18 +1652,18 @@ kubectl-ate get actor "session-${CONV}" -a kagent -o json \
   | jq '{name: .metadata.name, uid: .metadata.uid, version: .metadata.version, state: .status.state, snapshot: .status.externalSnapshot}'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 {
-  "name": "session-01a1703d-1636-7772-ad3f-bf1bee306116",
-  "uid": "00b24688-3ba5-4feb-a474-12e62c5e73cd",
+  "name": "session-01a175ad-cf7d-7f23-bc50-c04f1e51cfe2",
+  "uid": "272c4ac3-d250-42bf-b801-a6e02bb48a43",
   "version": "9",
   "state": "ACTOR_STATE_SUSPENDED",
   "snapshot": {
-    "actorTemplateUid": "98727874-6730-4388-96fe-be731d497a89",
+    "actorTemplateUid": "1bde2efc-b2f6-4fdc-91f4-f6f6a5ce540d",
     "contentScope": "SNAPSHOT_CONTENT_SCOPE_DATA",
-    "snapshotUri": "gs://ate-snapshots/kagent/atespaces/kagent/actors/00b24688-3ba5-4feb-a474-12e62c5e73cd/snapshots/9b09e468-d429-4e64-b954-dfd6c2d463d4"
+    "snapshotUri": "gs://ate-snapshots/kagent/atespaces/kagent/actors/272c4ac3-d250-42bf-b801-a6e02bb48a43/snapshots/40d07bd2-ba29-4607-ad12-1e39752fbd91"
   }
 }
 ```
@@ -1676,16 +1679,16 @@ kubectl-ate get workers
 kubectl-ate suspend actor "session-${CONV}" -a kagent
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 ATESPACE   NAME                                           TEMPLATE                        STATE                 WORKER POD                               WORKER IPS    VERSION   AGE
-kagent     session-01a1703d-1636-7772-ad3f-bf1bee306116   kagent/assistant-be37b5bba0cf   ACTOR_STATE_RUNNING   kagent/kagent-default-577c7bd4d6-v5zqs   10.244.0.24   11        10s
+kagent     session-01a175ad-cf7d-7f23-bc50-c04f1e51cfe2   kagent/assistant-215ab23d619c   ACTOR_STATE_RUNNING   kagent/kagent-default-577c7bd4d6-vshvw   10.244.0.25   11        66s
 NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                      AGE
-722211d6-bada-4f50-8949-161f8828668c   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-8qvxm   81s
-c3faac0d-9998-45c0-a008-6e565e728928   kagent-default   WORKER_STATE_ACTIVE   1/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-v5zqs   83s
+4ded3218-0d83-4725-8356-a62af48ff4d3   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-kkdmh   2m45s
+1ead8aff-0635-4b5a-8181-0730f03161ce   kagent-default   WORKER_STATE_ACTIVE   1/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-vshvw   2m45s
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a1703d-1636-7772-ad3f-bf1bee306116   kagent/assistant-be37b5bba0cf   ACTOR_STATE_SUSPENDED   <none>                    13        10s
+kagent     session-01a175ad-cf7d-7f23-bc50-c04f1e51cfe2   kagent/assistant-215ab23d619c   ACTOR_STATE_SUSPENDED   <none>                    13        66s
 ```
 
 > [!WARNING]
@@ -1753,18 +1756,18 @@ echo "-- golden images"
 snapshot_ls "kagent/atespaces/ate-golden/"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
--- session 01a1703d-1636-7772-ad3f-bf1bee306116 (actor 00b24688-3ba5-4feb-a474-12e62c5e73cd)
-2026-10-24 23:27:04       1606 kagent/atespaces/kagent/actors/00b24688-3ba5-4feb-a474-12e62c5e73cd/snapshots/46ba20ca-5afc-42d5-ae27-4540facdcf6a/durable-dir-data.tar.zstd
-2026-10-24 23:27:04        619 kagent/atespaces/kagent/actors/00b24688-3ba5-4feb-a474-12e62c5e73cd/snapshots/46ba20ca-5afc-42d5-ae27-4540facdcf6a/manifest.json
+-- session 01a175ad-cf7d-7f23-bc50-c04f1e51cfe2 (actor 272c4ac3-d250-42bf-b801-a6e02bb48a43)
+2026-10-26 00:49:14       1608 kagent/atespaces/kagent/actors/272c4ac3-d250-42bf-b801-a6e02bb48a43/snapshots/508e79cd-bb5d-4dcc-b4cf-bbe3ff899ba2/durable-dir-data.tar.zstd
+2026-10-26 00:49:14        619 kagent/atespaces/kagent/actors/272c4ac3-d250-42bf-b801-a6e02bb48a43/snapshots/508e79cd-bb5d-4dcc-b4cf-bbe3ff899ba2/manifest.json
 -- golden images
-2026-10-24 23:26:49      77976 kagent/atespaces/ate-golden/tags/e839a05e-e849-42bb-a31b-ee02f86ef1ee/checkpoint.img.zstd
-2026-10-24 23:26:49        901 kagent/atespaces/ate-golden/tags/e839a05e-e849-42bb-a31b-ee02f86ef1ee/durable-dir-data.tar.zstd
-2026-10-24 23:26:49        661 kagent/atespaces/ate-golden/tags/e839a05e-e849-42bb-a31b-ee02f86ef1ee/manifest.json
-2026-10-24 23:26:49    2029870 kagent/atespaces/ate-golden/tags/e839a05e-e849-42bb-a31b-ee02f86ef1ee/pages.img.zstd
-2026-10-24 23:26:49       2400 kagent/atespaces/ate-golden/tags/e839a05e-e849-42bb-a31b-ee02f86ef1ee/pages_meta.img.zstd
+2026-10-26 00:48:03      78187 kagent/atespaces/ate-golden/tags/ee2a5692-fe20-4a69-a59f-eced78b6165e/checkpoint.img.zstd
+2026-10-26 00:48:03        899 kagent/atespaces/ate-golden/tags/ee2a5692-fe20-4a69-a59f-eced78b6165e/durable-dir-data.tar.zstd
+2026-10-26 00:48:03        661 kagent/atespaces/ate-golden/tags/ee2a5692-fe20-4a69-a59f-eced78b6165e/manifest.json
+2026-10-26 00:48:03    1969023 kagent/atespaces/ate-golden/tags/ee2a5692-fe20-4a69-a59f-eced78b6165e/pages.img.zstd
+2026-10-26 00:48:03       2266 kagent/atespaces/ate-golden/tags/ee2a5692-fe20-4a69-a59f-eced78b6165e/pages_meta.img.zstd
 ```
 
 Each session keeps one snapshot, which each checkpoint replaces: its data directory
@@ -1816,7 +1819,7 @@ Delete the session from Step 11, by script:
 kagent_delete_session "$CONV"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 grpc-status: 0
@@ -1832,10 +1835,10 @@ echo "-- directory left on the node:"
 docker exec "${KIND_CLUSTER_NAME}-control-plane" ls /var/lib/ate/actors/${CONV_ACTOR_UID}
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-Error: failed to get actor "session-01a1703d-1636-7772-ad3f-bf1bee306116": rpc error: code = NotFound desc = Actor kagent/session-01a1703d-1636-7772-ad3f-bf1bee306116 not found
+Error: failed to get actor "session-01a175ad-cf7d-7f23-bc50-c04f1e51cfe2": rpc error: code = NotFound desc = Actor kagent/session-01a175ad-cf7d-7f23-bc50-c04f1e51cfe2 not found
 -- snapshot objects left for the actor:
 (no objects)
 -- directory left on the node:
@@ -1900,7 +1903,7 @@ EOF
 kubectl wait agent/assistant-claude-code -n kagent --for=condition=Ready --timeout=300s
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 harness.api.kagent.dev/claude-code created
@@ -1916,10 +1919,10 @@ kubectl-ate get egress-policy "session-${CLAUDE_CONTEXT}" --atespace kagent -o j
   | jq -r '.rules[] | to_entries[0] | "\(.key)\t\(.value.hostnames[0]):\(.value.ports.numbers[0])\t\([.value.effects.replaceHeaders[]? | "\(.header) <- \(.credentialUri)"] | join(", "))"'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-TASK_STATE_COMPLETED	01a1703d-ac9f-7b7a-9385-09c728b5d6f1	claude code harness
+TASK_STATE_COMPLETED	01a175af-584a-7515-a236-9f7978c16874	claude code harness
 http	agentgateway-proxy.agentgateway-system.svc.cluster.local:80	x-api-key <- ate-secret://k8s.io/default/kagent/kagent-gateway-consumer-key/api-key
 http	kagent-controller.kagent.svc:8083
 http	solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
@@ -1971,7 +1974,7 @@ of the UI and API authenticated, with roles deciding who can chat.
 Each step says which runtime it shows: the kagent Go ADK runtime (agent `assistant`) or Claude Code
 (agent `assistant-claude-code`, from Step 16).
 
-**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-24 22:54 to 23:32 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 18 of 18. Every output block in this guide comes from the last run, under bash.
+**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-26 00:12 to 00:55 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 18 of 18. Every output block in this guide comes from the last run, under bash.
 
 ### Step 17: One gVisor sandbox per session
 
@@ -2018,7 +2021,7 @@ docker exec "${KIND_CLUSTER_NAME}-control-plane" uname -r
 echo "-- gVisor sandboxes on the node for this actor: $(sandbox_procs "$FIRST_CONTEXT")"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 -- kernel inside the sandbox:
@@ -2044,15 +2047,15 @@ echo "-- its snapshot:"
 snapshot_ls "kagent/atespaces/kagent/actors/$(kubectl-ate get actor "session-${FIRST_CONTEXT}" -a kagent -o json | jq -r .metadata.uid)/"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 ATESPACE   NAME                                           TEMPLATE                        STATE                   WORKER POD   WORKER IPS   VERSION   AGE
-kagent     session-01a1703d-119e-73b2-b43f-2b363e23bd8e   kagent/assistant-be37b5bba0cf   ACTOR_STATE_SUSPENDED   <none>                    9         41s
+kagent     session-01a175ad-cadb-79ed-a28d-86c96e7ce912   kagent/assistant-215ab23d619c   ACTOR_STATE_SUSPENDED   <none>                    9         103s
 -- gVisor sandboxes on the node for this actor: 0
 -- its snapshot:
-2026-10-24 23:27:34       1400 kagent/atespaces/kagent/actors/6f0854b4-4893-4c6b-adae-abf6047ca131/snapshots/d495f8d5-5e0d-49ca-9d23-8d94b418e2da/durable-dir-data.tar.zstd
-2026-10-24 23:27:34        619 kagent/atespaces/kagent/actors/6f0854b4-4893-4c6b-adae-abf6047ca131/snapshots/d495f8d5-5e0d-49ca-9d23-8d94b418e2da/manifest.json
+2026-10-26 00:49:50       1401 kagent/atespaces/kagent/actors/b9277b98-d777-4e18-a9a6-c9d43edd3f67/snapshots/8366d221-0cb8-4528-ab95-104df28e605d/durable-dir-data.tar.zstd
+2026-10-26 00:49:50        619 kagent/atespaces/kagent/actors/b9277b98-d777-4e18-a9a6-c9d43edd3f67/snapshots/8366d221-0cb8-4528-ab95-104df28e605d/manifest.json
 ```
 
 | | Running | Suspended |
@@ -2135,7 +2138,7 @@ snapshot_cat "$SNAP_CONV" \
 }
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 TASK_STATE_COMPLETED	OK
@@ -2166,12 +2169,12 @@ kubectl-ate resume actor "session-${CLAUDE_CONTEXT}" -a kagent >/dev/null
 kubectl-ate get actors -a kagent | grep -E "NAME|${FIRST_CONTEXT}|${CLAUDE_CONTEXT}"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 ATESPACE   NAME                                           TEMPLATE                                    STATE                   WORKER POD                               WORKER IPS    VERSION   AGE
-kagent     session-01a1703d-119e-73b2-b43f-2b363e23bd8e   kagent/assistant-be37b5bba0cf               ACTOR_STATE_RUNNING     kagent/kagent-default-577c7bd4d6-v5zqs   10.244.0.24   11        48s
-kagent     session-01a1703d-ac9f-7b7a-9385-09c728b5d6f1   kagent/assistant-claude-code-0cd60d63633b   ACTOR_STATE_RUNNING     kagent/kagent-default-577c7bd4d6-8qvxm   10.244.0.25   7         8s
+kagent     session-01a175ad-cadb-79ed-a28d-86c96e7ce912   kagent/assistant-215ab23d619c               ACTOR_STATE_RUNNING     kagent/kagent-default-577c7bd4d6-vshvw   10.244.0.25   11        110s
+kagent     session-01a175af-584a-7515-a236-9f7978c16874   kagent/assistant-claude-code-12c508ebf375   ACTOR_STATE_RUNNING     kagent/kagent-default-577c7bd4d6-kkdmh   10.244.0.24   7         8s
 ```
 
 What each agent process has for a credential:
@@ -2183,12 +2186,12 @@ for conv in "$FIRST_CONTEXT" "$CLAUDE_CONTEXT"; do
 done
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
--- session-01a1703d-119e-73b2-b43f-2b363e23bd8e
+-- session-01a175ad-cadb-79ed-a28d-86c96e7ce912
 ANTHROPIC_API_KEY=kagent-credential-injected
--- session-01a1703d-ac9f-7b7a-9385-09c728b5d6f1
+-- session-01a175af-584a-7515-a236-9f7978c16874
 ANTHROPIC_API_KEY=kagent-credential-injected
 ```
 
@@ -2207,11 +2210,11 @@ for pair in "${FIRST_CONTEXT}:up and running" "${CLAUDE_CONTEXT}:claude code har
 done
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
--- session-01a1703d-119e-73b2-b43f-2b363e23bd8e: consumer key 0, control "up and running" 1
--- session-01a1703d-ac9f-7b7a-9385-09c728b5d6f1: consumer key 0, control "claude code harness" 6
+-- session-01a175ad-cadb-79ed-a28d-86c96e7ce912: consumer key 0, control "up and running" 1
+-- session-01a175af-584a-7515-a236-9f7978c16874: consumer key 0, control "claude code harness" 6
 ```
 
 The key is not in either sandbox, and the Anthropic key is not even in the `kagent` namespace: it
@@ -2230,7 +2233,7 @@ kubectl-ate suspend actor "session-${FIRST_CONTEXT}" -a kagent >/dev/null
 kubectl-ate suspend actor "session-${CLAUDE_CONTEXT}" -a kagent >/dev/null
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 injected
@@ -2264,14 +2267,14 @@ kubectl-ate suspend actor "session-${FIRST_CONTEXT}" -a kagent >/dev/null
 kubectl-ate suspend actor "session-${CLAUDE_CONTEXT}" -a kagent >/dev/null
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
--- session-01a1703d-119e-73b2-b43f-2b363e23bd8e
+-- session-01a175ad-cadb-79ed-a28d-86c96e7ce912
   https://example.com/                                                             HTTP/1.1 403 Forbidden
   https://api.anthropic.com/v1/models                                              HTTP/1.1 401 Unauthorized
   http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages      HTTP/1.1 401 Unauthorized
--- session-01a1703d-ac9f-7b7a-9385-09c728b5d6f1
+-- session-01a175af-584a-7515-a236-9f7978c16874
   https://example.com/                                                             HTTP/1.1 403 Forbidden
   https://api.anthropic.com/v1/models                                              HTTP/1.1 403 Forbidden
   http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages      HTTP/1.1 401 Unauthorized
@@ -2413,7 +2416,7 @@ EOF
 kubectl rollout status deployment/deployment-codes -n mcp-tools --timeout=180s
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 namespace/mcp-tools created
@@ -2552,7 +2555,7 @@ kubectl get remotemcpserver deployment-codes -n kagent -o jsonpath='{.status.con
 kubectl wait agent/deployment-helper -n kagent --for=condition=Ready --timeout=300s
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 remotemcpserver.api.kagent.dev/deployment-codes created
@@ -2580,17 +2583,17 @@ echo "-- MCP server log for the tool call (gateway pod: $(kubectl get pod -n age
 kubectl logs -n mcp-tools deployment/deployment-codes | jq -c 'select(.rpc == "tools/call") | {t, src, rpc, tool, auth}' | tail -1
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-TASK_STATE_COMPLETED	01a1703e-29a0-77f3-97b1-d344f9a8e9df	The deployment code for the service **payments** is **K7-teal-otter-0429**.
+TASK_STATE_COMPLETED	01a175af-d155-7c07-a544-84c01d90fba8	The deployment code for the payments service is **K7-teal-otter-0429**.
 -- egress policy:
 http	agentgateway-proxy.agentgateway-system.svc.cluster.local:80	x-api-key <- ate-secret://k8s.io/default/kagent/kagent-gateway-consumer-key/api-key
 http	kagent-controller.kagent.svc:8083
 http	solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
 https	api.anthropic.com:443
 -- MCP server log for the tool call (gateway pod: 10.244.0.27):
-{"t":"23:28:05","src":"10.244.0.27","rpc":"tools/call","tool":"lookup_code","auth":"bearer-match"}
+{"t":"00:50:20","src":"10.244.0.27","rpc":"tools/call","tool":"lookup_code","auth":"bearer-match"}
 ```
 
 The answer carries the code only the server knows, so the tool ran. The actor's policy names the
@@ -2668,9 +2671,8 @@ The limit is 2,000,000 tokens a day for the team. A budget counts every token th
 cached prompt reads included, and the two runtimes differ by a factor of almost fifty: a turn of
 the kagent runtime here is charged about 700 tokens, a turn of the Claude Code runtime about 34,200,
 almost all of it its own system prompt read from the provider's cache. A 200,000-token day ran out
-after about six Claude Code turns while this guide was being verified, after which the Claude Code
-runtime retried each refused call for about three minutes before failing the turn. Size a team's
-budget for the runtime it uses.
+after about six Claude Code turns while an earlier release of this guide was being verified. Size a
+team's budget for the runtime it uses.
 
 Send a turn from each runtime, then read the gateway's token metrics. The metrics port is 15020 on the
 proxy; the forward uses local port 18082, because 15020 is often still held by a forward from
@@ -2693,45 +2695,65 @@ else
 fi
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-TASK_STATE_COMPLETED	01a1703e-44df-7566-ba7f-79fa7e3fe226	attributed
-TASK_STATE_COMPLETED	01a1703e-47de-77e2-95e5-afed0344cbf6	attributed
+TASK_STATE_COMPLETED	01a175af-ecc1-7db3-af0d-96c73730b97d	attributed
+TASK_STATE_COMPLETED	01a175af-efd7-7866-ac2e-6572714f7f28	attributed
 gen_ai_token_type="input_cache_read" user_id="assistant-agent" team="team-agents"  31520.0
-gen_ai_token_type="output" user_id="assistant-agent" team="team-agents"  46.0
-gen_ai_token_type="input" user_id="assistant-agent" team="team-agents"  710.0
+gen_ai_token_type="output" user_id="assistant-agent" team="team-agents"  47.0
 gen_ai_token_type="input_cache_write" user_id="assistant-agent" team="team-agents"  2698.0
+gen_ai_token_type="input" user_id="assistant-agent" team="team-agents"  34928.0
 ```
 
 Every token is attributed to the key's `user` and `group`, so spend is per team or per agent key,
-not per person: the kagent user behind a session is not passed to the gateway.
+not per person: the kagent user behind a session is not passed to the gateway. On this release the
+`input` series is the whole prompt, so it already includes the cache reads and writes reported beside
+it; do not add them up.
 
 Prove the budget is enforced, not just accepted: drop it to one token, send a turn, then put it
-back:
+back. A turn the budget blocks does not end on its own on this release (below), so the block streams
+it for 15 seconds, reads its state, checks the gateway refused it, and cancels it:
 
 ```bash run id=step-21-budget-block
 kubectl patch enterpriseagentgatewaybudget team-budgets -n agentgateway-system --type json \
   -p '[{"op":"replace","path":"/spec/budgets/0/limit/amount","value":1}]'
 sleep 5
-kagent_send assistant "Reply with exactly: over budget"
+OVER=$( { curl -sS -N --max-time 15 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/assistant" \
+    -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"SendStreamingMessage\",\"params\":{\"message\":{\"messageId\":\"$(openssl rand -hex 8)\",\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"Reply with exactly: over budget\"}]}}}" \
+    2>/dev/null || true; } \
+  | sed -n 's/^data: //p' | jq -r 'select(.result.statusUpdate) | "\(.result.statusUpdate.taskId) \(.result.statusUpdate.status.state)"' | tail -1)
+echo "over-budget turn after 15 s: ${OVER#* }"
+echo "at the gateway: $(kubectl logs -n agentgateway-system deployment/agentgateway-proxy --since=1m \
+  | grep 'route=agentgateway-system/anthropic-messages' | grep 'http.status=429' | tail -1 | grep -oE 'http.status=[0-9]+|reason=[A-Za-z]+' | tr '\n' ' ')"
+CANCELLED=$(curl -sS --max-time 30 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/assistant" \
+  -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"CancelTask\",\"params\":{\"id\":\"${OVER%% *}\"}}" | jq -r '.result.status.state // .error.message')
+echo "cancel: ${CANCELLED}"
 kubectl patch enterpriseagentgatewaybudget team-budgets -n agentgateway-system --type json \
   -p '[{"op":"replace","path":"/spec/budgets/0/limit/amount","value":2000000}]'
 sleep 5
 kagent_send assistant "Reply with exactly: back under budget"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 enterpriseagentgatewaybudget.enterpriseagentgateway.solo.io/team-budgets patched
-TASK_STATE_FAILED	01a1703e-6dc1-70a5-9984-ce6c53257573	llm error response (code STREAM_ERROR): "POST \"http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1/messages\": 429 Too Many Requests rate limit exceeded"
+over-budget turn after 15 s: TASK_STATE_WORKING
+at the gateway: http.status=429 reason=RateLimit
+cancel: TASK_STATE_CANCELED
 enterpriseagentgatewaybudget.enterpriseagentgateway.solo.io/team-budgets patched
-TASK_STATE_COMPLETED	01a1703e-87a9-73d1-942f-ceedd1ed8f9b	back under budget
+TASK_STATE_COMPLETED	01a175b0-64d8-7ca5-b898-786d530fada7	back under budget
 ```
 
-The blocked turn fails in the agent with the gateway's `429`. The runtime retries a blocked call
-three times before giving up, and each attempt counts as a request, though none consumes tokens.
+The gateway refuses the turn's model call with `429`, and the turn does not fail: on this release
+the refusal carries `Retry-After` set to the time left in the budget's window, up to a day for a daily
+budget, and the kagent runtime waits that long before trying again. The turn stays working, its actor
+keeps running, and its session refuses another message until the turn is cancelled with A2A's
+`CancelTask`, as above (Attachment C.24). The Claude Code runtime fails a refused turn at once
+instead.
 
 ### Step 23: Replace the snapshot store's credentials and fence it
 
@@ -2775,7 +2797,7 @@ done
 echo "workers registered: ${have} of ${want}"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 job.batch "rustfs-bucket-init" deleted from ate-system namespace
@@ -2817,14 +2839,14 @@ echo "-- Step 9's session, suspended before the change:"
 kagent_send assistant "What exact phrase did I ask you to reply with in my first message? Answer with only that phrase." "$FIRST_CONTEXT"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 -- default credentials:
 
 An error occurred (InvalidAccessKeyId) when calling the ListObjectsV2 operation: The Access Key Id you provided does not exist in our records.
 -- Step 9's session, suspended before the change:
-TASK_STATE_COMPLETED	01a1703d-119e-73b2-b43f-2b363e23bd8e	up and running
+TASK_STATE_COMPLETED	01a175ad-cadb-79ed-a28d-86c96e7ce912	up and running
 ```
 
 **Second, a NetworkPolicy**, so that only the components that read and write snapshots can reach the
@@ -2872,14 +2894,14 @@ echo "-- a session still resumes:"
 kagent_send assistant "Reply with exactly: fenced" "$FIRST_CONTEXT"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 -- snapshot_ls with the new credentials, from a pod that is not atelet or ate-api:
 
 Connect timeout on endpoint URL: "http://rustfs.ate-system.svc:9000/ate-snapshots?list-type=2&prefix=kagent%2F&encoding-type=url"
 -- a session still resumes:
-TASK_STATE_COMPLETED	01a1703d-119e-73b2-b43f-2b363e23bd8e	fenced
+TASK_STATE_COMPLETED	01a175ad-cadb-79ed-a28d-86c96e7ce912	fenced
 ```
 
 Correct credentials, wrong pod, no connection. `snapshot_ls` and `snapshot_cat` no longer work on
@@ -3138,7 +3160,7 @@ fi
 rm -f "$REALM_FILE"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 namespace/keycloak created
@@ -3203,7 +3225,7 @@ EOF
 kubectl rollout status deployment/keycloak -n keycloak --timeout=600s
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 deployment.apps/keycloak created
@@ -3245,7 +3267,7 @@ done
 echo "cluster:     ${CLUSTER_ISSUER:-not resolvable from inside the cluster after 24 attempts}"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 workstation: http://keycloak.localhost:18080/realms/kagent
@@ -3319,7 +3341,7 @@ kubectl wait enterprisekagentrbacpolicy/admins enterprisekagentrbacpolicy/writer
   -n kagent --for=condition=Accepted --timeout=60s
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 enterprisekagentrbacpolicy.enterprisekagent.solo.io/admins created
@@ -3360,7 +3382,7 @@ forwards
 }
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 secret/kagent-enterprise-oidc-secret created
@@ -3415,7 +3437,7 @@ curl -sS -X POST "${KC}/realms/kagent/protocol/openid-connect/token" -d grant_ty
   -d username=writer --data-urlencode "password=${KAGENT_WRITER_PASSWORD}" | jq -r '.error // "issued"'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 token from kagent-cli while disabled: invalid_client
@@ -3470,12 +3492,12 @@ echo -n "API with no token:             "; curl -sS -o /dev/null -w '%{http_code
 echo -n "writer turn:                   "; kagent_send assistant "Reply with exactly: keycloak token accepted"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 bundled login /autoauth/token: 405
 API with no token:             401
-writer turn:                   TASK_STATE_COMPLETED	01a17040-eded-7711-a3fd-234b63e58539	keycloak token accepted
+writer turn:                   TASK_STATE_COMPLETED	01a175b3-3cd8-7466-968f-5bcff1fcf429	keycloak token accepted
 ```
 
 **In the browser.** Open `http://localhost:14000` (or your `KAGENT_UI_PORT`). The UI redirects to
@@ -3517,7 +3539,7 @@ for user in admin writer reader norole; do
 done
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 admin   agents listed: 3  delete an agent: Agent not found   chat: TASK_STATE_COMPLETED hello admin
@@ -3548,10 +3570,10 @@ echo "session created by norole: ${NOROLE_SESSION:-none}"
 KAGENT_USER=norole kagent_send assistant "Reply with exactly: hello from norole" "$NOROLE_SESSION" | cut -f1,3
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-session created by norole: 01a17040-fcb7-76d5-b65d-2f691b1976c4
+session created by norole: 01a175b3-4c8a-7105-bb50-5aec1f30bfbe
 TASK_STATE_COMPLETED	hello from norole
 ```
 
@@ -3601,7 +3623,7 @@ re-measure them on your own nodes, and a way to change the worker pool without l
 The steps you run here make five model calls in total and finish in a few minutes. The larger figures
 are reference measurements from longer runs on the same reference environment, labelled as such.
 
-**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-24 22:54 to 23:32 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 18 of 18. Every output block in this guide comes from the last run, under bash.
+**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-26 00:12 to 00:55 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 18 of 18. Every output block in this guide comes from the last run, under bash.
 
 ### Step 26: A pod per session, a pod per agent, or Substrate
 
@@ -3714,12 +3736,12 @@ echo "worker memory peak:    ${PEAK} MiB, up to ${PEAK_RUNNING} turns in flight"
 echo "worker memory after:   ${AFTER} MiB, running actors now: $(running_actors)"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
-worker memory before:  76 MiB, 0 turns in flight
-worker memory peak:    323 MiB, up to 4 turns in flight
-worker memory after:   68 MiB, running actors now: 0
+worker memory before:  77 MiB, 0 turns in flight
+worker memory peak:    315 MiB, up to 4 turns in flight
+worker memory after:   65 MiB, running actors now: 0
 ```
 
 Memory rises with the turns in flight and falls back when they end, though not always to where it
@@ -3759,16 +3781,16 @@ kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U pos
 echo "-- actor directories on the node: $(docker exec "${KIND_CLUSTER_NAME}-control-plane" sh -c 'ls /var/lib/ate/actors | wc -l') ($(docker exec "${KIND_CLUSTER_NAME}-control-plane" du -sh /var/lib/ate/actors | cut -f1))"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 sessions in Substrate: 17
--- snapshot store, on disk: 6.0M of 1Gi
+-- snapshot store, on disk: 5.9M of 1Gi
 -- session snapshots atelet uploaded in the last 15 minutes (uncompressed, KB per snapshot):
   11 38.9
 -- PostgreSQL, by schema:
-kagent: 2696 kB
-substrate: 936 kB
+kagent: 2704 kB
+substrate: 864 kB
 -- actor directories on the node: 21 (844K)
 ```
 
@@ -3817,13 +3839,13 @@ echo "node CPU: $(kubectl get nodes -o jsonpath='{.items[0].status.allocatable.c
 kubectl-ate get workers
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 node CPU: 6, memory: 12220312Ki
 NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                      AGE
-722211d6-bada-4f50-8949-161f8828668c   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-8qvxm   5m38s
-c3faac0d-9998-45c0-a008-6e565e728928   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-v5zqs   5m40s
+4ded3218-0d83-4725-8356-a62af48ff4d3   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-kkdmh   7m49s
+1ead8aff-0635-4b5a-8181-0730f03161ce   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-vshvw   7m49s
 ```
 
 Each worker advertises the whole node and room for 1,000 actors, and actors request no CPU or
@@ -3869,7 +3891,7 @@ Check the node's headroom before changing worker resources:
 kubectl describe node | sed -n '/Allocated resources/,/Events/p' | sed '$d'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 Allocated resources:
@@ -3910,19 +3932,19 @@ forwards
 kagent_send assistant "Reply with exactly: three workers"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 NAME             DESIRED   REPLICAS   READY   AGE
-kagent-default   3         3          3       6m25s
+kagent-default   3         3          3       8m37s
 NAME                                   POOL             STATE                 ACTORS   CPU   MEMORY         POD                                      AGE
-722211d6-bada-4f50-8949-161f8828668c   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-8qvxm   5m42s
-8f114c86-0afb-4cf3-bbd2-9801dd300b05   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-tjxpl   1s
-c3faac0d-9998-45c0-a008-6e565e728928   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-v5zqs   5m44s
+4ded3218-0d83-4725-8356-a62af48ff4d3   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-kkdmh   7m54s
+fa0dc9db-4604-4c40-a4ff-a001f472c4cd   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-pq5kn   1s
+1ead8aff-0635-4b5a-8181-0730f03161ce   kagent-default   WORKER_STATE_ACTIVE   0/1000   0/6   0/12220312Ki   kagent/kagent-default-577c7bd4d6-vshvw   7m54s
 deployment "kagent-controller" successfully rolled out
 deployment "kagent-ui" successfully rolled out
 forwards up: controller 18083, ui 14000
-TASK_STATE_COMPLETED	01a17041-4524-7a0c-a028-cbe6a1ea8b5f	three workers
+TASK_STATE_COMPLETED	01a175b3-94c3-727f-a771-1c89085df23d	three workers
 ```
 
 `--reuse-values` keeps everything earlier steps set, including the OIDC issuer; without it, Helm
@@ -3947,7 +3969,7 @@ MCP server, the fences, and another user's access.
 **What you will have that you did not have before:** one pass that tells you whether the whole
 platform still does what each step said it would, and which step to go back to when it does not.
 
-**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-24 22:54 to 23:32 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 18 of 18. Every output block in this guide comes from the last run, under bash.
+**Verified on:** four certification runs, one after another, each on a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`), beside one other cluster on the same Docker host, 2026-10-26 00:12 to 00:55 UTC: in document order with every block pasted as it comes, manual ones included, under bash and under zsh, then the normal run under zsh and under bash. In each, every block was executed verbatim in one uninterrupted pass of `auto-build/run.sh`, from an empty directory outside the repository, on the versions in Version support, and Validate passed 18 of 18. Every output block in this guide comes from the last run, under bash.
 
 ### Step 31: Drive one session through every control
 
@@ -3979,7 +4001,7 @@ record "Step 24" "API call with no token" "HTTP $(curl -sS -o /dev/null -w '%{ht
   "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/deployment-helper" -H 'Content-Type: application/json' -d '{}')" '^HTTP 401$'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 PASS  Step 24       Keycloak token for writer: issued
@@ -3995,19 +4017,22 @@ record "Steps 8, 21" "Turn using the model and the MCP tool" "$(echo "$TURN" | c
 wait_suspended "$VALIDATE_CONV" >/dev/null
 record "Steps 10, 11" "First restore of the session's actor" "$(actor_events "$VALIDATE_CONV" | head -1 | cut -f2,3 | tr '\t' ' ')" '^Restore timing breakdown golden/full$'
 record "Step 11" "Actor state after the turn" "$(kubectl-ate get actor "session-${VALIDATE_CONV}" -a kagent -o json | jq -r .status.state)" '^ACTOR_STATE_SUSPENDED$'
-for i in $(seq 1 12); do trace_spans "$VALIDATE_CONV" | grep -q agentgateway-proxy && break; sleep 5; done
+for i in $(seq 1 12); do
+  trace_spans "$VALIDATE_CONV" | awk -F'\t' '$4 == "agentgateway-proxy" && $5 ~ /^POST / {found=1} END {exit !found}' && break
+  sleep 5
+done
 record "Step 12" "Spans in the turn's trace" "$(trace_spans "$VALIDATE_CONV" \
   | awk -F'\t' '{split($5, w, " "); n[w[1]]++} END {printf "invoke_agent=%d generate_content=%d execute_tool=%d gateway POST=%d", n["invoke_agent"], n["generate_content"], n["execute_tool"], n["POST"]}')" \
   '^invoke_agent=1 generate_content=[1-9][0-9]* execute_tool=1 gateway POST=[1-9]'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 PASS  Steps 8, 21   Turn using the model and the MCP tool: TASK_STATE_COMPLETED The deployment code for the billing service is **K7-teal-otter-0429**.
 PASS  Steps 10, 11  First restore of the session's actor: Restore timing breakdown golden/full
 PASS  Step 11       Actor state after the turn: ACTOR_STATE_SUSPENDED
-PASS  Step 12       Spans in the turn's trace: invoke_agent=1 generate_content=2 execute_tool=1 gateway POST=7
+PASS  Step 12       Spans in the turn's trace: invoke_agent=1 generate_content=2 execute_tool=1 gateway POST=4
 ```
 
 **Inside the sandbox.** Resume the actor and look:
@@ -4022,7 +4047,7 @@ record "Step 20" "A destination outside the egress policy" "$(sandbox_exec "$VAL
 kubectl-ate suspend actor "session-${VALIDATE_CONV}" -a kagent >/dev/null
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 PASS  Step 17       Kernel the agent sees: 4.19.0-gvisor
@@ -4054,7 +4079,7 @@ record "Step 22" "Budget enforcement policy" "$(kubectl get enterpriseagentgatew
   -o jsonpath='{range .status.ancestors[*].conditions[*]}{.type}={.status} {end}')" 'Accepted=True.*Attached=True'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 PASS  Steps 6, 7, 9  Model call at the gateway, from Substrate egress: http.status=200
@@ -4077,7 +4102,7 @@ record "Step 24" "Reader deleting an agent" "$(printf '\000\000\000\000\031\012\
   | LC_ALL=C tr -d '\r' | grep -i '^grpc-message:' | cut -d' ' -f2-)" '^Not authorized$'
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 PASS  Step 7        Another pod reaching the gateway: wget: download timed out
@@ -4094,7 +4119,7 @@ FAILED=$(printf '%s' "$VALIDATE_RESULTS" | grep -c '^FAIL' || true)
 echo "checks: $(printf '%s' "$VALIDATE_RESULTS" | grep -c '|' || true), failed: ${FAILED}"
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-10-26:**
 
 ```text
 PASS  set in Step 24       Keycloak token for writer
@@ -4233,8 +4258,11 @@ curl -sS -H "Authorization: Bearer ${ADMIN_TOKEN}" "${KC}/admin/realms/kagent/cl
   public CAs (Step 8).
 - **Budget and attribute per key.** Spend is attributed to the consumer key's user and group, not to
   the person in the session, so issue keys per team or per agent (Step 22).
-- **Expect a blocked budget to look like a failed turn.** The runtime retries a `429` three times,
-  each counted as a request, then fails the turn with the gateway's error (Step 22).
+- **Expect a blocked budget to leave kagent turns open.** The gateway's `429` carries `Retry-After`
+  until the budget's window ends, and the kagent runtime waits for it, so a blocked turn neither
+  fails nor finishes and its session takes no other message. Watch for turns working longer than a
+  turn takes, and cancel them (Step 22, Attachment C.24). The Claude Code runtime fails a blocked
+  turn at once.
 - **Treat who-talks-to-which-agent as visible to every signed-in user.** Any signed-in user, one the
   policies grant nothing included, can list every user's session IDs for an agent, and read every
   user's traces, tool results included (Steps 12 and 25). Sessions themselves stay private.
