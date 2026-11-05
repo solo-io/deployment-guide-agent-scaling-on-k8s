@@ -46,7 +46,10 @@ the template.
 
 ### A.2 The realm
 
-Three clients, all with a `Groups` mapper that puts the user's group names in a `Groups` claim:
+Three clients, all with a `Groups` mapper that puts the user's group names in a `Groups` claim.
+`kagent-ui` and `kagent-cli` also carry an audience mapper that adds `kagent-enterprise-api` to the
+access token's `aud`: the controller accepts only tokens for that audience
+(`enterprise.oidc.allowedAudiences`, whose default is that one value), and answers any other with 401.
 
 | Client | Type | Flows | Used by |
 |---|---|---|---|
@@ -62,9 +65,9 @@ Groups `admins`, `writers` and `readers`, and four users:
 
 | User | Group | What Step 24's policies grant |
 |---|---|---|
-| `admin` | `admins` | Manage agents and their configuration |
-| `writer` | `writers` | Manage agents, view the rest |
-| `reader` | `readers` | View |
+| `admin` | `admins` | Manage everything, every user's sessions and traces included |
+| `writer` | `writers` | Manage agents and its own sessions, view the configuration |
+| `reader` | `readers` | View the configuration; no chat |
 | `norole` | none | Nothing; signs in all the same |
 
 ### A.3 How groups become access
@@ -76,15 +79,17 @@ kagent reads two claims from every token, both chart values:
 | `enterprise.rbac.groupsClaim` | `Groups` | The `groups` a policy's principals match |
 | `enterprise.rbac.userClaim` | `sub` | The `user` a policy's principals match, and who owns a session |
 
-A policy's `principals` match on those, and its `grants` give `view` or `manage` on `kagent:agents`,
-`kagent:agent-templates`, `kagent:harnesses`, `kagent:model-configs`, `kagent:runtimes`, or all
-five as `kagent:*`, optionally limited to namespaces and names. `manage` includes `view`. A token with no groups claim matches no group, and is
-still signed in.
+A policy's `principals` match on those, and its `grants` give `view` or `manage` on a key from the
+product's catalog, such as `kagent:agents`, `kagent:sessions` or `kagent:model-configs`, or on every
+key as `kagent:*`, optionally limited to namespaces and names. `manage` includes `view`. A token
+with no groups claim matches no group, and is still signed in.
 
-The policies govern only those five kinds of resource. Signing in is enough to start a session with
-any agent, list every user's sessions and read every trace (Step 25), so who can sign in is the
-control over who uses the agents. With no policies at all, every signed-in user may also change
-everything.
+Sessions are in the catalog: starting one, or sending its first message, needs `manage
+kagent:sessions` as well as view on the agent, and a session stays its creator's. Listing every
+user's sessions needs `kagent:sessions-all-creators`, and another user's trace content needs
+`kagent:traces` and `kagent:traces:payloads`; `kagent:*` carries all three, which is why Step 24
+grants writers their view kind by kind (Step 25). With no policies at all, every signed-in user may
+change everything and chat with any agent, but still sees only their own sessions and traces.
 
 Look at what a token actually carries:
 
@@ -92,15 +97,15 @@ Look at what a token actually carries:
 for user in writer norole; do
   printf '%-7s ' "$user"
   KAGENT_USER=$user kagent_token | cut -d. -f2 | tr '_-' '/+' | awk '{l=length($0)%4; if (l) $0=$0 substr("===", 1, 4-l); print}' \
-    | base64 --decode 2>/dev/null | jq -c '{iss, azp, preferred_username, Groups}'
+    | base64 --decode 2>/dev/null | jq -c '{iss, aud, azp, preferred_username, Groups}'
 done
 ```
 
-**Verified on 2026-10-24:**
+**Verified on 2026-11-05:**
 
 ```text
-writer  {"iss":"http://keycloak.localhost:18080/realms/kagent","azp":"kagent-cli","preferred_username":"writer","Groups":["writers"]}
-norole  {"iss":"http://keycloak.localhost:18080/realms/kagent","azp":"kagent-cli","preferred_username":"norole","Groups":null}
+writer  {"iss":"http://keycloak.localhost:18080/realms/kagent","aud":"kagent-enterprise-api","azp":"kagent-cli","preferred_username":"writer","Groups":["writers"]}
+norole  {"iss":"http://keycloak.localhost:18080/realms/kagent","aud":"kagent-enterprise-api","azp":"kagent-cli","preferred_username":"norole","Groups":null}
 ```
 
 ### A.4 Using your own identity provider
@@ -139,8 +144,8 @@ node images and identity all differ there, and none of that was tested.
 Follow Up and Running with the blocks below in place of the ones they name. Everything else in Up
 and Running is unchanged.
 
-**Verified on:** a throwaway kind cluster `compat11` (kind 0.32.0, `kindest/node:v1.35.0`), beside
-one other cluster on the same Docker host, 2026-10-26 00:56 to 00:59 UTC. Up and Running was run
+**Verified on:** a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`) on the
+reference environment, with no other cluster in its VM, 2026-11-05 22:12 to 22:16 UTC. Up and Running was run
 verbatim through Step 9 with these blocks substituted, in one pass (`auto-build/run.sh --attachment
 docs/attachments.md --to step-9-gateway-log`), on the guide's versions.
 
@@ -172,7 +177,7 @@ kubectl api-resources --api-group=certificates.k8s.io
 kubectl get --raw /metrics | grep -E 'kubernetes_feature_enabled\{name="(ClusterTrustBundle|ClusterTrustBundleProjection|PodCertificateRequest)"'
 ```
 
-**Verified on 2026-10-26:**
+**Verified on 2026-11-05:**
 
 ```text
 NAME                         SHORTNAMES   APIVERSION               NAMESPACED   KIND
@@ -219,7 +224,7 @@ openssl x509 -in "$WORK/tls.crt" -noout -subject -enddate
 rm -rf "$WORK"
 ```
 
-**Verified on 2026-10-26:**
+**Verified on 2026-11-05:**
 
 ```text
 secret/ate-ca-server-tls created
@@ -233,7 +238,7 @@ configmap/ate-ca-server-ca created
 configmap/ate-ca-podidentity-trust created
 configmap/ate-ca-servicedns-trust created
 subject=CN=ate-ca.podcertificate-controller-system.svc
-notAfter=Oct 26 00:56:29 2027 GMT
+notAfter=Nov  5 22:13:05 2027 GMT
 ```
 
 These ConfigMaps are not kept in step by anything. When you rotate the CA pools, publish the old and
@@ -256,7 +261,7 @@ kubectl rollout status deployment -n podcertificate-controller-system --timeout=
 kubectl get pods -n podcertificate-controller-system
 ```
 
-**Verified on 2026-10-26:**
+**Verified on 2026-11-05:**
 
 ```text
 Release "substrate-podcert" does not exist. Installing it now.
@@ -267,7 +272,7 @@ DESCRIPTION: Install complete
 Waiting for deployment "podcertificate-controller" rollout to finish: 0 of 1 updated replicas are available...
 deployment "podcertificate-controller" successfully rolled out
 NAME                                         READY   STATUS    RESTARTS   AGE
-podcertificate-controller-747c48cdc4-5hk6g   1/1     Running   0          12s
+podcertificate-controller-69f8dfbb5d-ntwdn   1/1     Running   0          12s
 ```
 
 ### B.4 PostgreSQL with password logins (in place of `postgres-install` and `step-4-postgres-check`)
@@ -417,7 +422,7 @@ unset PW_K_OWNER PW_K_RW PW_OWNER PW_RW
 rm -rf "$PG_SETUP"
 ```
 
-**Verified on 2026-10-26:**
+**Verified on 2026-11-05:**
 
 ```text
 secret/kagent-postgresql-tls created
@@ -444,7 +449,7 @@ kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U pos
 kubectl get configmap kagent-postgresql -n kagent -o jsonpath='{.data.pg_hba\.conf}'
 ```
 
-**Verified on 2026-10-26:**
+**Verified on 2026-11-05:**
 
 ```text
 enterprise owned by kagent_owner
@@ -498,32 +503,35 @@ EOF
 kubectl wait --for=condition=Available deployment --all -n ate-system --timeout=600s
 kubectl rollout status daemonset/atelet -n ate-system --timeout=300s
 kubectl get pods -n ate-system
-kubectl logs -n podcertificate-controller-system deployment/podcertificate-controller --all-containers | grep -m1 'not served'
+kubectl logs -n podcertificate-controller-system deployment/podcertificate-controller --all-containers | grep 'not served' | tail -1
 echo "-- kubectl-ate:"
 kubectl-ate get actors -A 2>&1 | tail -1 || true
 ```
 
-**Verified on 2026-10-26:**
+**Verified on 2026-11-05:**
 
 ```text
 deployment.apps/ate-api-server condition met
 deployment.apps/ate-controller condition met
+deployment.apps/ate-idp-server condition met
 deployment.apps/atenet-egress condition met
 deployment.apps/atenet-router condition met
 deployment.apps/k8s-credential-provider condition met
 deployment.apps/rustfs condition met
 daemon set "atelet" successfully rolled out
 NAME                                       READY   STATUS      RESTARTS   AGE
-ate-api-server-846494d677-79wj8            2/2     Running     0          51s
-ate-api-server-846494d677-gsbpd            2/2     Running     0          51s
-ate-controller-57fd587bfc-9whzp            2/2     Running     0          51s
-atelet-rw7p9                               2/2     Running     0          51s
-atenet-egress-59c54c45f-8l2tx              2/2     Running     0          51s
-atenet-router-55759bb48b-cdnvp             2/2     Running     0          51s
-k8s-credential-provider-7ff9c959f6-s28wc   2/2     Running     0          51s
-rustfs-7b5d94bc9b-dnr5h                    1/1     Running     0          51s
-rustfs-bucket-init-8gjpj                   0/1     Completed   0          51s
-{"time":"2026-10-26T00:56:42.88350862Z","level":"WARN","msg":"certificates.k8s.io ClusterTrustBundle API is not served; PodCertificateRequest signers disabled, publishing EnterpriseSubstrateClusterTrustBundles"}
+ate-api-server-66d7bf965d-2jxqp            3/3     Running     0          64s
+ate-api-server-66d7bf965d-jf7hd            3/3     Running     0          64s
+ate-controller-6f66cc9785-khqrm            2/2     Running     0          64s
+ate-idp-server-69b6bf9d8b-4hqf7            2/2     Running     0          64s
+ate-idp-server-69b6bf9d8b-55dm2            2/2     Running     0          64s
+atelet-2fhjf                               3/3     Running     0          64s
+atenet-egress-f56c97bff-2mm2g              2/2     Running     0          64s
+atenet-router-f5b7fb597-x2d4c              2/2     Running     0          64s
+k8s-credential-provider-55cd8d6578-db9hn   2/2     Running     0          64s
+rustfs-5d695f5fd-rc6c5                     1/1     Running     0          64s
+rustfs-bucket-init-spnr9                   0/1     Completed   0          64s
+{"time":"2026-11-05T22:13:18.369993368Z","level":"WARN","msg":"certificates.k8s.io ClusterTrustBundle API is not served; PodCertificateRequest signers disabled, publishing EnterpriseSubstrateClusterTrustBundles"}
 -- kubectl-ate:
 Error: failed to connect to ate-api-server: failed to discover ClusterTrustBundle API: neither v1 nor v1beta1 ClusterTrustBundle is served
 ```
@@ -572,7 +580,7 @@ kubectl get deployment kagent-controller -n kagent -o jsonpath='{range .spec.tem
 kubectl get workerpool -n kagent
 ```
 
-**Verified on 2026-10-26:**
+**Verified on 2026-11-05:**
 
 ```text
 Release "kagent" does not exist. Installing it now.
@@ -582,8 +590,8 @@ REVISION: 1
 DESCRIPTION: Install complete
 (Helm's release notes omitted)
 ate-ca-agent controller idp
-NAME             DESIRED   REPLICAS   READY   AGE
-kagent-default   2         2          2       62s
+NAME             DESIRED   REPLICAS   READY   SANDBOXCONFIG    RESOLVED   AGE
+kagent-default   2         2          2       gvisor-default   True       61s
 ```
 
 The sidecar image is pinned by digest to the same Substrate release as `WORKER_IMAGE`.
@@ -598,7 +606,7 @@ enterprise gateway either way.
 kubectl-ate get egress-policy "session-${FIRST_CONTEXT}" --atespace kagent 2>&1 | tail -1 || true
 ```
 
-**Verified on 2026-10-26:**
+**Verified on 2026-11-05:**
 
 ```text
 Error: failed to connect to ate-api-server: failed to discover ClusterTrustBundle API: neither v1 nor v1beta1 ClusterTrustBundle is served
@@ -611,11 +619,12 @@ again on purpose, or met while verifying this guide; **observed during discovery
 while building this guide and not reproduced since. Entries marked **[Dn]** exist because of an open
 product defect and go away when it is fixed.
 
-The fix commands are written to be run as they are, in your guide shell. On this release,
-`c-rotate-pools` (C.10), `c-add-to-group` (C.20) and `c-restart-workers` (C.23) were run on
-2026-10-24, and `c-cancel-stuck-turns` (C.24) on 2026-10-25, on verification clusters built by the guide (`auto-build/run.sh --attachment
-docs/attachments.md --only ...`). The others were run on 1.0.0-alpha10 on 2026-10-14, on a
-verification cluster after Validate had passed there, and not repeated.
+The fix commands are written to be run as they are, in your guide shell. On this release every
+command block below was run on 2026-11-05, on a verification cluster built by the guide
+(`auto-build/run.sh --attachment docs/attachments.md --only ...`), after Validate had passed there,
+and Validate passed again after the last of them. Most ran against a healthy cluster, so they show
+that the fix is safe to run and leaves the cluster working, not that it cures the symptom; the
+entries that say what was verified on this release went further.
 
 ### Install
 
@@ -640,8 +649,7 @@ ConfigMap from the cluster's own issuer and restart ate-api.
 ```bash run id=c-issuer-fix when=manual
 ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r .issuer)
 echo "cluster issuer: ${ISSUER}"
-kubectl create configmap ate-api-authentication -n ate-system --from-literal=authentication.yaml="actorIdentityJWTProvider: kubernetes
-jwtProviders:
+kubectl create configmap ate-api-authentication -n ate-system --from-literal=authentication.yaml="jwtProviders:
 - name: kubernetes
   issuer: ${ISSUER}
   audiences: [api.ate-system.svc]
@@ -684,7 +692,7 @@ taken`.** *Reproduced (a Harness naming `s3://no-such-bucket/`).* Cause: the buc
 then point the Harness at the bucket the store has (`ate-snapshots` with the bundled store):
 
 ```bash run id=c-snapshot-bucket when=manual
-kubectl logs -n ate-system daemonset/atelet --since=1h | grep -m3 -E 'NoSuchBucket|PutObject' || echo "no storage errors in the last hour"
+kubectl logs -n ate-system daemonset/atelet --all-containers --since=1h | grep -E 'NoSuchBucket|PutObject' | tail -3 | grep . || echo "no storage errors in the last hour"
 kubectl patch harness kagent-adk -n kagent --type merge -p '{"spec":{"substrate":{"snapshotPolicy":{"location":"gs://ate-snapshots/kagent/"}}}}'
 ```
 
@@ -693,7 +701,7 @@ Cause: a label in atelet's messages; the `gs://` and `s3://` schemes are handled
 the bundled store is S3. Fix: none. Check which backend atelet uses:
 
 ```bash run id=c-storage-backend when=manual
-kubectl get daemonset atelet -n ate-system -o json | jq -r '.spec.template.spec.containers[].env[]? | select(.name == "ATE_STORAGE_BACKEND" or .name == "AWS_ENDPOINT_URL") | "\(.name)=\(.value)"'
+kubectl get daemonset atelet -n ate-system -o json | jq -r '(.spec.template.spec.initContainers + .spec.template.spec.containers)[].env[]? | select(.name == "ATE_STORAGE_BACKEND" or .name == "AWS_ENDPOINT_URL") | "\(.name)=\(.value)"'
 ```
 
 **C.8 An agent goes `Ready`, and its first turn fails with `503 Service Unavailable credential
@@ -949,7 +957,8 @@ curl -sS http://keycloak.localhost:${KEYCLOAK_PORT}/realms/kagent/.well-known/op
 ```
 
 **C.23 [D18] After a node restarts, every turn on it is refused with `input was not accepted; retry after
-the session becomes available`.** *Reproduced (a kind node stopped and started).* The actor is
+the session becomes available`.** *Reproduced on 1.0.0-alpha11 (a kind node stopped and started); not
+reproduced on this release.* The actor is
 restored, and then atenet-router cannot reach it: its log shows `upstream call failed: Connect:
 deadline has elapsed`. Cause: the worker pods keep their names while their containers restart, and
 Substrate's registrations of them are from before the restart (their age in `kubectl-ate get
@@ -969,9 +978,10 @@ done
 kubectl-ate get workers
 ```
 
-Verified on this release: after the node was stopped and started, a turn was refused as above, with
-the router's `deadline has elapsed`; after this block the old workers were listed as draining, three
-new ones registered, and the next turn completed. Restarting the node restarts Keycloak too, which
+On this release, after the kind node was stopped and started on 2026-11-05, the workers restarted in
+place, kept their registrations, and seven turns in new sessions completed without this block; the
+block itself runs cleanly and leaves three workers registered (Validate passed after it). On
+1.0.0-alpha11 a turn was refused as above until it ran. Restarting the node restarts Keycloak too, which
 re-imports the realm with `kagent-cli` disabled (A.1), so scripts get `401` until Step 24's
 `keycloak-enable-kagent-cli` block runs again.
 
@@ -982,7 +992,8 @@ waiting on it times out, and another message into the session is refused with `r
 Suspending the actor does not end the turn, and deleting the session leaves the turn recorded as
 working. Fix: raise the budget or let its window pass, then cancel each stuck turn with A2A's
 `CancelTask` on its agent's endpoint, as the user who started it: a turn belongs to its session's
-creator, and anyone else is answered `task not found`. This finds turns working for more than 10
+creator, and anyone else is answered `task not found`, or `permission denied` without session
+rights. This finds turns working for more than 10
 minutes and cancels them as the user in `KAGENT_USER` (default `writer`); run it once for each user
 whose turns are stuck. A turn started through the bundled login before Step 24 could not be cancelled
 after it, as `writer` or as `admin`:

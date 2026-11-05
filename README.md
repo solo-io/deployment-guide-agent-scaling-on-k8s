@@ -117,6 +117,7 @@ Each certified state of the guide is tagged:
 | `certified-alpha10` | kagent-enterprise 1.0.0-alpha10 |
 | `certified-alpha10-r2` | kagent-enterprise 1.0.0-alpha10, with tracing, paste-safe blocks in bash and zsh, and no dependency on this repository |
 | `certified-alpha11` | kagent-enterprise 1.0.0-alpha11 and Solo Enterprise for agentgateway v2026.10.1, with access policies in place of roles |
+| `certified-2026.11.0` | Solo Enterprise for kagent v2026.11.0 (GA), Agent Substrate 1.0.0-rc.2 and Solo Enterprise for agentgateway v2026.10.1, with sessions governed by access policies |
 
 The guide documents a validated deployment at a point in time. It does not cover upgrade paths
 between product versions; a fresh install of the pinned set is the only path it verifies.
