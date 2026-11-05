@@ -67,28 +67,30 @@ login, so do not expose this cluster to anyone until Isolate is done.
 
 ## Version support
 
-kagent-enterprise and Agent Substrate are pre-release. This guide is pinned to one tested set, and
-every version, chart and image below is part of that set:
+Solo Enterprise for kagent is generally available from v2026.11.0, its first release under
+calendar versioning. Agent Substrate, which it runs on, is still a release candidate. This guide is
+pinned to one tested set, and every version, chart and image below is part of that set:
 
 | Component | Version |
 |---|---|
-| kagent-enterprise (CRD and controller charts) | 1.0.0-alpha11, built from kagent v1.0.0-alpha14 |
-| Agent Substrate (`substrate-crds`, `substrate-podcert` and `substrate` charts, worker image) | 0.5.0-alpha4-da3c2e5 |
-| kubectl-ate | v0.5.0-alpha2 |
-| kagent runtime images (`golang-adk`, `claude-harness`) | 1.0.0-alpha14, pinned by digest |
+| Solo Enterprise for kagent (`kagent-enterprise-crds` and `kagent-enterprise` charts) | 2026.11.0 (release v2026.11.0), built from open-source kagent after v1.0.0-rc2 |
+| Agent Substrate (`substrate-crds`, `substrate-podcert` and `substrate` charts, worker image) | 1.0.0-rc.2-53bc70f3 |
+| kubectl-ate | v1.0.0-rc1 |
+| kagent runtime images (`golang-adk`, `claude-harness`) | 2026.11.0, pinned by digest |
 | PostgreSQL | 18.6 (`postgres:18.6-alpine3.23`), pinned by digest |
 | Solo Enterprise for agentgateway | v2026.10.1 |
 | Kubernetes | 1.35.0 on kind 0.32.0 |
 
 Do not mix versions across this set. The three Substrate charts and the worker image come from one
-Substrate release. kubectl-ate comes from the open-source Substrate release the kagent controller is
-built against, which is why its number differs from the charts'. The runtime images come from the kagent release
-this kagent-enterprise release is built from.
+Substrate release, open-source Substrate v1.0.0-rc2, which the kagent controller is built against.
+kubectl-ate comes from open-source Substrate's published releases, and the latest is v1.0.0-rc1:
+v1.0.0-rc2 has no kubectl-ate release. The two releases' APIs differ only in what the server
+validates, so kubectl-ate v1.0.0-rc1 works against this Substrate. The runtime images are published with the
+Solo Enterprise for kagent release, and are the images its chart uses by default.
 
 **Fresh install only.** This guide installs this set on a new cluster. It does not cover upgrading
-an earlier release in place: the 1.0.0-alpha8 charts deployed PostgreSQL and carried Substrate's
-CRDs, and the 1.0.0-alpha11 charts log in to PostgreSQL as two users where 1.0.0-alpha10 used one.
-An in-place upgrade was not tested.
+an earlier release in place. The 1.0.0-rc1 release rewrote the database schema baselines, so a
+database created by an earlier pre-release cannot be upgraded. An in-place upgrade was not tested.
 
 ## Environment setup
 
@@ -108,8 +110,8 @@ Then set these. Every command below uses them.
 
 ```bash run id=environment-setup-env
 # Pinned versions
-export KAGENT_VERSION=1.0.0-rc1
-export SUBSTRATE_VERSION=1.0.0-rc.1-76ace06f
+export KAGENT_VERSION=2026.11.0
+export SUBSTRATE_VERSION=1.0.0-rc.2-53bc70f3
 export KUBECTL_ATE_VERSION=v1.0.0-rc1
 export AGENT_GATEWAY_VERSION=v2026.10.1
 export GATEWAY_API_VERSION=v1.6.1
@@ -120,10 +122,10 @@ export KIND_NODE_IMAGE=kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f578
 
 # The worker image Substrate runs sandboxes on, and the agent runtime images.
 # Substrate refuses an image that is not pinned: a changed image invalidates snapshots.
-export WORKER_IMAGE=us-docker.pkg.dev/solo-public/substrate-enterprise/ateworker-gvisor:v1.0.0-rc.1-76ace06f@sha256:f52daac6998b18b63c682e146955378a84e9580abfeb4f1c5149b7fdfa2d1add
-export RUNTIME_IMAGE=ghcr.io/kagent-dev/kagent/golang-adk:1.0.0-rc1@sha256:5b06741be8cb69c9293477bdbf3203c6526127c533fa940fd9f595a82a801701
+export WORKER_IMAGE=us-docker.pkg.dev/solo-public/substrate-enterprise/ateworker-gvisor:v1.0.0-rc.2-53bc70f3@sha256:f4c335f40bbdb235a1be8cd324ec53ee88aef7ae2e385113d6c1770ab5b2d87b
+export RUNTIME_IMAGE=us-docker.pkg.dev/solo-public/kagent-enterprise/golang-adk:2026.11.0@sha256:40f1d46b54b9f82bb9aa2485c8a6c7b0b15c1a0758d2f7cd3938975f86662cf8
 # The Claude Code runtime, used in Step 16. Same kagent release as RUNTIME_IMAGE.
-export CLAUDE_HARNESS_IMAGE=ghcr.io/kagent-dev/kagent/claude-harness:1.0.0-rc1@sha256:359f8d8107df0ac5b0ebb306b0bc2e8d0ae0c3eae4540fe909724f1d8379dad5
+export CLAUDE_HARNESS_IMAGE=us-docker.pkg.dev/solo-public/kagent-enterprise/claude-harness:2026.11.0@sha256:9e0ad88127371b116e22a5de8289347ff03498896b413be091039b663febdbd4
 
 # The database kagent and Substrate share, Step 4.
 export POSTGRES_IMAGE=postgres:18.6-alpine3.23@sha256:885cf05d376c7cf27afef02073e6bdac3841252537f16e244fd1c1e6a7c99fb1
@@ -143,7 +145,7 @@ export KEYCLOAK_VERSION=26.2.5
 export KEYCLOAK_PORT=${KEYCLOAK_PORT:-18080}
 
 # Licenses. Contact your Solo account team if you do not have them.
-export KAGENT_LICENSE_KEY='<your-kagent-enterprise-license-key>'
+export KAGENT_LICENSE_KEY='<your-solo-enterprise-for-kagent-license-key>'
 export AGENTGATEWAY_LICENSE_KEY='<your-agentgateway-enterprise-license-key>'
 
 # Model provider. Anthropic is the reference provider.
@@ -165,10 +167,10 @@ export KAGENT_UI_PORT=${KAGENT_UI_PORT:-14000}
 
 | **Requirement** | **Needed for** | **Notes** |
 |---|---|---|
-| Docker on a machine with 6 CPU and 12 GiB for it | Everything | The reference environment is Colima on macOS (`colima start --cpu 6 --memory 12`). The full stack settles at about 5 GiB on the node. |
+| Docker on a machine with 6 CPU and 12 GiB for it | Everything | The reference environment is Colima on macOS (`colima start --cpu 6 --memory 12`). The full stack settles at about 5 GiB on the node. On x86-64 the CPU must support AVX2, which the bundled ClickHouse requires. |
 | `kind` 0.32.0, `kubectl`, `helm`, `jq`, `curl`, `openssl` | Everything | |
 | `zstd` | Step 18 | Decompresses a snapshot to search it |
-| kagent-enterprise license key | Step 5 | |
+| Solo Enterprise for kagent license key | Step 5 | |
 | Solo Enterprise for agentgateway license key | Steps 3 and 6 | Substrate's chart requires one too |
 | Anthropic API key | Step 6 | It is stored once, in the gateway. Nothing else holds it. |
 | Egress from the cluster to `ghcr.io`, `us-docker.pkg.dev`, `docker.io` and `api.anthropic.com` | Everything | Images, and the model calls |
@@ -308,7 +310,7 @@ Substrate pod wait for a certificate that nothing can issue.
 
 Substrate's CRDs (`WorkerPool`, `SandboxConfig`, `EnterpriseSubstrateClusterTrustBundle`) come
 from their own chart, `substrate-crds`, released in `ate-system` beside the rest of Substrate. The
-kagent-enterprise CRD chart carries only kagent's. The Gateway API CRDs are for the enterprise
+Solo Enterprise for kagent CRD chart carries only kagent's. The Gateway API CRDs are for the enterprise
 gateway in Step 6.
 
 ```bash run id=helm-substrate-crds
@@ -504,16 +506,16 @@ from the service DNS pool.
 
 The manifest and the role scripts are upstream's, fetched at the versions this guide pins and
 checked against their digests. Each product gets an owner role, which owns its schema and runs its
-migrations, and a read/write role, which can change rows but not tables. kagent-enterprise also keeps
+migrations, and a read/write role, which can change rows but not tables. Solo Enterprise for kagent also keeps
 tables in a schema of its own, `enterprise`, owned by kagent's owner role. The statements after the
 scripts create it and give kagent's read/write role the same row access there as in kagent's schema,
-which is what kagent-enterprise's own database setup does. With traces kept in ClickHouse, as Step 5
-configures them, the controller creates no tables there yet; the grants cover any it does create.
+which is what Solo Enterprise for kagent's own database setup does. With traces kept in ClickHouse, as
+Step 5 leaves them, the controller creates no tables there yet; the grants cover any it does create.
 
 ```bash run id=postgres-install
 PG_SETUP=$(mktemp -d)
-KAGENT_SRC=https://raw.githubusercontent.com/kagent-dev/kagent/v1.0.0-rc1/go
-SUBSTRATE_SRC=https://raw.githubusercontent.com/kagent-dev/substrate/v1.0.0-rc1/pkg/postgressetup
+KAGENT_SRC=https://raw.githubusercontent.com/kagent-dev/kagent/v1.0.0-rc2/go
+SUBSTRATE_SRC=https://raw.githubusercontent.com/kagent-dev/substrate/v1.0.0-rc2/pkg/postgressetup
 curl -sSLf -o "$PG_SETUP/postgres.yaml" "$KAGENT_SRC/core/pkg/install/bundled_postgres.yaml"
 curl -sSLf -o "$PG_SETUP/kagent.sql" "$KAGENT_SRC/core/pkg/postgressetup/setup.sql"
 curl -sSLf -o "$PG_SETUP/substrate.sql" "$SUBSTRATE_SRC/setup.sql"
@@ -769,10 +771,9 @@ EOF
 > [!WARNING]
 > **From here until Step 24, the UI hands out admin tokens to anyone who asks.** With no identity provider configured, kagent runs a bundled login whose token endpoint issues an admin token without a password. Keep every port-forward on 127.0.0.1 (the `forwards` helper does), do not expose the UI or controller Services, and do not leave this cluster reachable by anyone else. Step 24 replaces the bundled login with Keycloak and removes the endpoint.
 
-`telemetry.enabled` deploys the chart's OpenTelemetry collector, and the two `traces.endpoint`
-values send the controller's and every agent runtime's spans to it; the collector writes them to the
-chart's ClickHouse. The chart deploys ClickHouse either way but, without these three values, nothing
-writes to it and no turn is traced. The runtimes get the endpoint in their own configuration, and
+Tracing needs no values. The chart deploys an OpenTelemetry collector and ClickHouse by default, and
+points the controller's and every agent runtime's spans at the collector, which writes them to
+ClickHouse. The runtimes get the endpoint in their own configuration, and
 kagent adds it to each agent's egress allowlist, so their spans leave through Substrate's egress
 gateway like every other call. Step 12 reads a turn's trace.
 
@@ -1274,7 +1275,8 @@ forwards
 
 Two helpers. `kagent_token` gets a token from the bundled login, which is exactly the open endpoint
 Step 5 warned about; Step 24 replaces it. `kagent_send` sends one message to an agent over A2A and
-prints the reply and the session's ID:
+prints the reply and the session's ID. Every A2A call carries `A2A-Version: 1.0`: without it the
+controller reads the request as the older 0.3 protocol, and `SendMessage` fails.
 
 ```bash run id=step-9-helpers
 kagent_token() {
@@ -1291,7 +1293,7 @@ kagent_send() {
   local ctx=""
   [ -n "${3:-}" ] && ctx="\"contextId\":\"$3\","
   curl -sS --max-time 300 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/$1" \
-    -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' -H 'A2A-Version: 1.0' \
     -d "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"$(openssl rand -hex 8)\",${ctx}\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"$2\"}]}}}" \
     | jq -r 'if .result.task then (.result.task | "\(.status.state)\t\(.contextId)\t\(((.artifacts[-1].parts // .status.message.parts // []) | map(.text // "") | join("")) | gsub("\\s*\n\\s*"; " "))")
              else "NO_TASK\t\t\(.error.message // ("no task in the response: " + (tostring | .[0:200])))" end'
@@ -1982,7 +1984,9 @@ Four harness kinds exist on this release, and an Agent's harness names exactly o
 
 Every harness in this guide names its image in `workload.image`, pinned by digest. Only `byo` must:
 for the other three kinds `workload` is optional, and the controller fills in the image from the
-chart's `config.harnessImages`. This release's chart ships that map empty, so leave the image in.
+chart's `config.harnessImages`. This release's chart fills that map with the same digest-pinned
+images as `RUNTIME_IMAGE` and `CLAUDE_HARNESS_IMAGE`; the guide still names them, so the image a
+harness runs is written in the harness.
 
 `byo` is the path for other frameworks, such as LangGraph or CrewAI, and it is not a plain
 container: the image must implement kagent's agent contract, which kagent's adapter packages for
@@ -2759,7 +2763,8 @@ kubectl patch enterpriseagentgatewaybudget team-budgets -n agentgateway-system -
   -p '[{"op":"replace","path":"/spec/budgets/0/limit/amount","value":1}]'
 sleep 5
 OVER=$( { curl -sS -N --max-time 15 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/assistant" \
-    -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
+    -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' -H 'A2A-Version: 1.0' \
+    -H 'Accept: text/event-stream' \
     -d "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"SendStreamingMessage\",\"params\":{\"message\":{\"messageId\":\"$(openssl rand -hex 8)\",\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"Reply with exactly: over budget\"}]}}}" \
     2>/dev/null || true; } \
   | sed -n 's/^data: //p' | jq -r 'select(.result.statusUpdate) | "\(.result.statusUpdate.taskId) \(.result.statusUpdate.status.state)"' | tail -1)
@@ -2767,7 +2772,7 @@ echo "over-budget turn after 15 s: ${OVER#* }"
 echo "at the gateway: $(kubectl logs -n agentgateway-system deployment/agentgateway-proxy --since=1m \
   | grep 'route=agentgateway-system/anthropic-messages' | grep 'http.status=429' | tail -1 | grep -oE 'http.status=[0-9]+|reason=[A-Za-z]+' | tr '\n' ' ')"
 CANCELLED=$(curl -sS --max-time 30 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/assistant" \
-  -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' -H 'A2A-Version: 1.0' \
   -d "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"CancelTask\",\"params\":{\"id\":\"${OVER%% *}\"}}" | jq -r '.result.status.state // .error.message')
 echo "cancel: ${CANCELLED}"
 kubectl patch enterpriseagentgatewaybudget team-budgets -n agentgateway-system --type json \
@@ -3318,7 +3323,7 @@ Two identical lines, or the controller will reject every token. The cluster side
 the CoreDNS change has arrived; if it never resolves, check the rewrite with `kubectl get configmap
 coredns -n kube-system -o yaml`.
 
-**Write the policies before anyone signs in.** kagent-enterprise authorizes with
+**Write the policies before anyone signs in.** Solo Enterprise for kagent authorizes with
 `EnterpriseKagentRBACPolicy` objects. Once any policy exists, everything kagent manages, sessions
 included, is open only as far as some policy grants. These three give each group in the realm above
 a level:
@@ -3573,7 +3578,7 @@ kagent_send() {
   local ctx="" out code body
   [ -n "${3:-}" ] && ctx="\"contextId\":\"$3\","
   out=$(curl -sS --max-time 300 -w '\n%{http_code}' -X POST "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/$1" \
-    -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' -H 'A2A-Version: 1.0' \
     -d "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"$(openssl rand -hex 8)\",${ctx}\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"$2\"}]}}}")
   code=${out##*$'\n'}; body=${out%$'\n'*}
   printf '%s' "$body" | jq -r 'if .error then "REFUSED\t\(.error.message)" elif .result.task then (.result.task | "\(.status.state)\t\(.contextId)\t\(((.artifacts[-1].parts // .status.message.parts // []) | map(.text // "") | join("")) | gsub("\\s*\n\\s*"; " "))") else "NO_TASK\t\tno task in the response: \(tostring | .[0:200])" end' 2>/dev/null \

@@ -368,8 +368,8 @@ spec:
   - {name: postgresql, port: 5432, targetPort: postgresql}
 EOF
 kubectl rollout status deployment/kagent-postgresql -n kagent --timeout=300s
-KAGENT_SRC=https://raw.githubusercontent.com/kagent-dev/kagent/v1.0.0-alpha14/go/core/pkg/postgressetup
-SUBSTRATE_SRC=https://raw.githubusercontent.com/kagent-dev/substrate/v0.5.0-alpha2/pkg/postgressetup
+KAGENT_SRC=https://raw.githubusercontent.com/kagent-dev/kagent/v1.0.0-rc2/go/core/pkg/postgressetup
+SUBSTRATE_SRC=https://raw.githubusercontent.com/kagent-dev/substrate/v1.0.0-rc2/pkg/postgressetup
 curl -sSLf -o "$PG_SETUP/kagent.sql" "$KAGENT_SRC/setup.sql"
 curl -sSLf -o "$PG_SETUP/substrate.sql" "$SUBSTRATE_SRC/setup.sql"
 ( cd "$PG_SETUP" && shasum -a 256 -c - ) <<EOF
@@ -458,7 +458,8 @@ hostssl kagent kagent_owner_user,kagent_readwrite_user,substrate_owner_user,subs
 ### B.5 Substrate (in place of `helm-substrate`)
 
 `usePodCertificateAPI: false` selects the compatibility issuer. `postgres.clientCertificates` stays
-off, because ate-api logs in with the password in its connection Secrets:
+off, because ate-api logs in with the password in its connection Secrets. The preview gates, API
+owners and router ingress are the same as in Step 5:
 
 ```bash run id=b-helm-substrate replaces=helm-substrate
 helm upgrade -i substrate \
@@ -473,6 +474,17 @@ global:
 usePodCertificateAPI: false
 rustfs:
   storageSize: ${SNAPSHOT_STORE_SIZE}
+preview:
+  - PerTemplateSnapshotLocation
+  - GoldenEgressPolicy
+ateApi:
+  authorization:
+    bootstrapOwners:
+      - spiffe://cluster.local/ns/kagent/sa/kagent-controller
+      - system:serviceaccount:ate-system:ate-client
+atenetRouter:
+  ingressAllowedSPIFFEIDs:
+    - spiffe://cluster.local/ns/kagent/sa/kagent-controller
 credentialProvider:
   namespacePolicies:
     - atespace: kagent
@@ -529,7 +541,7 @@ controller does not use kubectl-ate.
 
 The controller takes its Substrate client certificate from `ate-ca` too, through an `ate-ca-agent`
 sidecar from the same Substrate release, and its two database logins, owner and read/write, from the
-`kagent-postgres-owner` and `kagent-postgres-readwrite` Secrets B.4 created. Tracing is set as in Step 5:
+`kagent-postgres-owner` and `kagent-postgres-readwrite` Secrets B.4 created. The rest is as in Step 5:
 
 ```bash run id=b-helm-kagent replaces=helm-kagent
 helm upgrade -i kagent \
@@ -545,23 +557,10 @@ enterprise:
     createSecret: false
   substrate:
     usePodCertificateAPI: false
-    ateCAAgentImage: us-docker.pkg.dev/solo-public/substrate-enterprise/atecaagent:v${SUBSTRATE_VERSION}@sha256:62367396f6e03d4246deac19e715d87306d91122351aa1ee2296995887ae4e4f
-kmcp:
-  licensing:
-    createSecret: false
+    ateCAAgentImage: us-docker.pkg.dev/solo-public/substrate-enterprise/atecaagent:v${SUBSTRATE_VERSION}@sha256:28835a3bf254fd16b3ab3e1e605558ca30255b4a59437bb804d94c1fbbd66654
 controller:
-  substrate:
+  substrateClientCertificate:
     enabled: true
-telemetry:
-  enabled: true
-config:
-  telemetry:
-    traces:
-      endpoint: http://solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
-  runtimeDefaults:
-    telemetry:
-      traces:
-        endpoint: http://solo-enterprise-telemetry-collector.kagent.svc.cluster.local:4317
 substrateWorkerPool:
   create: true
   name: kagent-default
@@ -997,7 +996,7 @@ kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U pos
   | while read -r agent task; do
       printf '%s %s: ' "$agent" "$task"
       curl -sS --max-time 30 -X POST "http://127.0.0.1:${KAGENT_API_PORT}/agents/kagent/${agent}" \
-        -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' \
+        -H "Authorization: Bearer $(kagent_token)" -H 'Content-Type: application/json' -H 'A2A-Version: 1.0' \
         -d "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"CancelTask\",\"params\":{\"id\":\"${task}\"}}" \
         | jq -r '.result.status.state // .error.message'
     done

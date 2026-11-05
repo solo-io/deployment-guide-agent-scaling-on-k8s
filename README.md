@@ -1,6 +1,6 @@
 # Operating, Isolating, and Scaling Agent Workloads on Kubernetes
 
-A validated deployment guide for running agents on **Agent Substrate** under **kagent-enterprise**,
+A validated deployment guide for running agents on **Agent Substrate** under **Solo Enterprise for kagent**,
 with every model and tool call they make going through **Solo Enterprise for agentgateway**.
 
 ---
@@ -15,7 +15,7 @@ ordinary pods, each agent carries its own copy of everything:
   enforce a budget or see which team spent what;
 - agents from different teams share the node's kernel.
 
-kagent-enterprise and Agent Substrate answer the first and last: each session is its own actor in a
+Solo Enterprise for kagent and Agent Substrate answer the first and last: each session is its own actor in a
 gVisor sandbox, restored from a snapshot when a message arrives and suspended when the turn ends.
 Solo Enterprise for agentgateway answers the rest: one place where agents authenticate, budgets
 apply and every call is attributed and traced.
@@ -55,7 +55,7 @@ exists only because of an open product defect.
 |---|---|
 | Docker with 6 CPU and 12 GiB | The reference environment is Colima on macOS |
 | `kind` 0.32.0, `kubectl`, `helm`, `jq`, `curl`, `openssl`, `zstd` | Standard tooling |
-| A kagent-enterprise licence key and a Solo Enterprise for agentgateway licence key | Contact your Solo account team |
+| A Solo Enterprise for kagent licence key and a Solo Enterprise for agentgateway licence key | Contact your Solo account team |
 | An Anthropic API key | Stored once, in the gateway; no agent holds it |
 | Network access to `ghcr.io`, `us-docker.pkg.dev`, `docker.io`, `github.com`, `raw.githubusercontent.com` and `api.anthropic.com` | Images, pinned downloads and the model calls |
 
