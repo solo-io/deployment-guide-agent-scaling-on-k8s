@@ -101,7 +101,7 @@ for user in writer norole; do
 done
 ```
 
-**Verified on 2026-11-05:**
+**Verified on 2026-11-09:**
 
 ```text
 writer  {"iss":"http://keycloak.localhost:18080/realms/kagent","aud":"kagent-enterprise-api","azp":"kagent-cli","preferred_username":"writer","Groups":["writers"]}
@@ -145,7 +145,7 @@ Follow Up and Running with the blocks below in place of the ones they name. Ever
 and Running is unchanged.
 
 **Verified on:** a kind cluster created fresh for it (kind 0.32.0, `kindest/node:v1.35.0`) on the
-reference environment, with no other cluster in its VM, 2026-11-05 22:12 to 22:16 UTC. Up and Running was run
+reference environment, with no other cluster in its VM, 2026-11-10 00:14 to 00:23 UTC. Up and Running was run
 verbatim through Step 9 with these blocks substituted, in one pass (`auto-build/run.sh --attachment
 docs/attachments.md --to step-9-gateway-log`), on the guide's versions.
 
@@ -177,7 +177,7 @@ kubectl api-resources --api-group=certificates.k8s.io
 kubectl get --raw /metrics | grep -E 'kubernetes_feature_enabled\{name="(ClusterTrustBundle|ClusterTrustBundleProjection|PodCertificateRequest)"'
 ```
 
-**Verified on 2026-11-05:**
+**Verified on 2026-11-10:**
 
 ```text
 NAME                         SHORTNAMES   APIVERSION               NAMESPACED   KIND
@@ -224,7 +224,7 @@ openssl x509 -in "$WORK/tls.crt" -noout -subject -enddate
 rm -rf "$WORK"
 ```
 
-**Verified on 2026-11-05:**
+**Verified on 2026-11-10:**
 
 ```text
 secret/ate-ca-server-tls created
@@ -238,7 +238,7 @@ configmap/ate-ca-server-ca created
 configmap/ate-ca-podidentity-trust created
 configmap/ate-ca-servicedns-trust created
 subject=CN=ate-ca.podcertificate-controller-system.svc
-notAfter=Nov  5 22:13:05 2027 GMT
+notAfter=Nov 10 00:15:20 2027 GMT
 ```
 
 These ConfigMaps are not kept in step by anything. When you rotate the CA pools, publish the old and
@@ -261,7 +261,7 @@ kubectl rollout status deployment -n podcertificate-controller-system --timeout=
 kubectl get pods -n podcertificate-controller-system
 ```
 
-**Verified on 2026-11-05:**
+**Verified on 2026-11-10:**
 
 ```text
 Release "substrate-podcert" does not exist. Installing it now.
@@ -272,7 +272,7 @@ DESCRIPTION: Install complete
 Waiting for deployment "podcertificate-controller" rollout to finish: 0 of 1 updated replicas are available...
 deployment "podcertificate-controller" successfully rolled out
 NAME                                         READY   STATUS    RESTARTS   AGE
-podcertificate-controller-69f8dfbb5d-ntwdn   1/1     Running   0          12s
+podcertificate-controller-6ccc9fbd89-2ltb5   1/1     Running   0          10s
 ```
 
 ### B.4 PostgreSQL with password logins (in place of `postgres-install` and `step-4-postgres-check`)
@@ -373,13 +373,13 @@ spec:
   - {name: postgresql, port: 5432, targetPort: postgresql}
 EOF
 kubectl rollout status deployment/kagent-postgresql -n kagent --timeout=300s
-KAGENT_SRC=https://raw.githubusercontent.com/kagent-dev/kagent/v1.0.0-rc2/go/core/pkg/postgressetup
-SUBSTRATE_SRC=https://raw.githubusercontent.com/kagent-dev/substrate/v1.0.0-rc2/pkg/postgressetup
+KAGENT_SRC=https://raw.githubusercontent.com/kagent-dev/kagent/v1.0.0-rc3/go/core/pkg/postgressetup
+SUBSTRATE_SRC=https://raw.githubusercontent.com/kagent-dev/substrate/v1.0.0/pkg/postgressetup
 curl -sSLf -o "$PG_SETUP/kagent.sql" "$KAGENT_SRC/setup.sql"
 curl -sSLf -o "$PG_SETUP/substrate.sql" "$SUBSTRATE_SRC/setup.sql"
 ( cd "$PG_SETUP" && shasum -a 256 -c - ) <<EOF
 ed02e38bd6ae05c6ac9b374610d3728bdb9c8749e238e358b92a146cd1184f59  kagent.sql
-137264dea1a39db1a0692da8c24bd49d5272dae6123bab3cec1d667fdb8ee37e  substrate.sql
+609aa9900dcee152a9e8cc75b9fd6ec57f37e70ed9dfd73c820cf2e2bf310a09  substrate.sql
 EOF
 PW_K_OWNER=$(openssl rand -hex 24); PW_K_RW=$(openssl rand -hex 24)
 PW_OWNER=$(openssl rand -hex 24); PW_RW=$(openssl rand -hex 24)
@@ -422,7 +422,7 @@ unset PW_K_OWNER PW_K_RW PW_OWNER PW_RW
 rm -rf "$PG_SETUP"
 ```
 
-**Verified on 2026-11-05:**
+**Verified on 2026-11-10:**
 
 ```text
 secret/kagent-postgresql-tls created
@@ -449,7 +449,7 @@ kubectl exec -n kagent deployment/kagent-postgresql -c postgresql -- psql -U pos
 kubectl get configmap kagent-postgresql -n kagent -o jsonpath='{.data.pg_hba\.conf}'
 ```
 
-**Verified on 2026-11-05:**
+**Verified on 2026-11-10:**
 
 ```text
 enterprise owned by kagent_owner
@@ -460,11 +460,32 @@ hostssl all postgres all reject
 hostssl kagent kagent_owner_user,kagent_readwrite_user,substrate_owner_user,substrate_readwrite_user all scram-sha-256
 ```
 
-### B.5 Substrate (in place of `helm-substrate`)
+### B.5 Substrate (in place of `helm-substrate-atelet` and `helm-substrate`)
 
-`usePodCertificateAPI: false` selects the compatibility issuer. `postgres.clientCertificates` stays
-off, because ate-api logs in with the password in its connection Secrets. The preview gates, API
-owners and router ingress are the same as in Step 5:
+`usePodCertificateAPI: false` selects the compatibility issuer, in both charts: atelet then runs
+`atecaagent` beside it for its certificate. The object store settings are the same as in Step 5:
+
+```bash run id=b-helm-substrate-atelet replaces=helm-substrate-atelet
+helm upgrade -i substrate-atelet \
+  oci://us-docker.pkg.dev/solo-public/enterprise-substrate-helm/substrate-atelet \
+  --version ${SUBSTRATE_VERSION} \
+  --namespace ate-system \
+  -f - <<EOF
+usePodCertificateAPI: false
+preview:
+  - PerTemplateSnapshotLocation
+  - GoldenEgressPolicy
+objectStore:
+  endpoint: http://rustfs.ate-system.svc:9000
+  region: us-east-1
+  pathStyle: true
+  credentialsSecret: kagent-rustfs-credentials
+EOF
+kubectl rollout status daemonset/atelet -n ate-system --timeout=300s
+```
+
+`postgres.clientCertificates` stays off, because ate-api logs in with the password in its connection
+Secrets. The preview gates, API owners and router ingress are the same as in Step 5:
 
 ```bash run id=b-helm-substrate replaces=helm-substrate
 helm upgrade -i substrate \
@@ -472,6 +493,8 @@ helm upgrade -i substrate \
   --version ${SUBSTRATE_VERSION} \
   --namespace ate-system \
   -f - <<EOF
+atelet:
+  enabled: false
 global:
   licensing:
     createSecret: false
@@ -508,7 +531,7 @@ echo "-- kubectl-ate:"
 kubectl-ate get actors -A 2>&1 | tail -1 || true
 ```
 
-**Verified on 2026-11-05:**
+**Verified on 2026-11-10:**
 
 ```text
 deployment.apps/ate-api-server condition met
@@ -520,18 +543,18 @@ deployment.apps/k8s-credential-provider condition met
 deployment.apps/rustfs condition met
 daemon set "atelet" successfully rolled out
 NAME                                       READY   STATUS      RESTARTS   AGE
-ate-api-server-66d7bf965d-2jxqp            3/3     Running     0          64s
-ate-api-server-66d7bf965d-jf7hd            3/3     Running     0          64s
-ate-controller-6f66cc9785-khqrm            2/2     Running     0          64s
-ate-idp-server-69b6bf9d8b-4hqf7            2/2     Running     0          64s
-ate-idp-server-69b6bf9d8b-55dm2            2/2     Running     0          64s
-atelet-2fhjf                               3/3     Running     0          64s
-atenet-egress-f56c97bff-2mm2g              2/2     Running     0          64s
-atenet-router-f5b7fb597-x2d4c              2/2     Running     0          64s
-k8s-credential-provider-55cd8d6578-db9hn   2/2     Running     0          64s
-rustfs-5d695f5fd-rc6c5                     1/1     Running     0          64s
-rustfs-bucket-init-spnr9                   0/1     Completed   0          64s
-{"time":"2026-11-05T22:13:18.369993368Z","level":"WARN","msg":"certificates.k8s.io ClusterTrustBundle API is not served; PodCertificateRequest signers disabled, publishing EnterpriseSubstrateClusterTrustBundles"}
+ate-api-server-5595fcfd6f-jnxhd            3/3     Running     0          2m2s
+ate-api-server-5595fcfd6f-x26lj            3/3     Running     0          2m2s
+ate-controller-df749849b-cv2jk             2/2     Running     0          2m2s
+ate-idp-server-9699fb85b-9qbgv             2/2     Running     0          2m2s
+ate-idp-server-9699fb85b-bgjc9             2/2     Running     0          2m2s
+atelet-c757p                               3/3     Running     0          2m44s
+atenet-egress-85bbddb556-6npth             2/2     Running     0          2m2s
+atenet-router-79849f76f4-dsg2m             2/2     Running     0          2m2s
+k8s-credential-provider-5cc8b7695d-x9dhx   2/2     Running     0          2m2s
+rustfs-5d695f5fd-jqfz6                     1/1     Running     0          2m2s
+rustfs-bucket-init-jgw4x                   0/1     Completed   0          2m2s
+{"time":"2026-11-10T00:15:32.085298632Z","level":"WARN","msg":"certificates.k8s.io ClusterTrustBundle API is not served; PodCertificateRequest signers disabled, publishing EnterpriseSubstrateClusterTrustBundles"}
 -- kubectl-ate:
 Error: failed to connect to ate-api-server: failed to discover ClusterTrustBundle API: neither v1 nor v1beta1 ClusterTrustBundle is served
 ```
@@ -565,7 +588,7 @@ enterprise:
     createSecret: false
   substrate:
     usePodCertificateAPI: false
-    ateCAAgentImage: us-docker.pkg.dev/solo-public/substrate-enterprise/atecaagent:v${SUBSTRATE_VERSION}@sha256:28835a3bf254fd16b3ab3e1e605558ca30255b4a59437bb804d94c1fbbd66654
+    ateCAAgentImage: us-docker.pkg.dev/solo-public/substrate-enterprise/atecaagent:v${SUBSTRATE_VERSION}@sha256:8e10bc04f4d0486af8318ea71e44483970033428ece09d0a90e863ffd25e0b23
 controller:
   substrateClientCertificate:
     enabled: true
@@ -580,7 +603,7 @@ kubectl get deployment kagent-controller -n kagent -o jsonpath='{range .spec.tem
 kubectl get workerpool -n kagent
 ```
 
-**Verified on 2026-11-05:**
+**Verified on 2026-11-10:**
 
 ```text
 Release "kagent" does not exist. Installing it now.
@@ -591,7 +614,7 @@ DESCRIPTION: Install complete
 (Helm's release notes omitted)
 ate-ca-agent controller idp
 NAME             DESIRED   REPLICAS   READY   SANDBOXCONFIG    RESOLVED   AGE
-kagent-default   2         2          2       gvisor-default   True       61s
+kagent-default   2         2          2       gvisor-default   True       2m31s
 ```
 
 The sidecar image is pinned by digest to the same Substrate release as `WORKER_IMAGE`.
@@ -606,7 +629,7 @@ enterprise gateway either way.
 kubectl-ate get egress-policy "session-${FIRST_CONTEXT}" --atespace kagent 2>&1 | tail -1 || true
 ```
 
-**Verified on 2026-11-05:**
+**Verified on 2026-11-10:**
 
 ```text
 Error: failed to connect to ate-api-server: failed to discover ClusterTrustBundle API: neither v1 nor v1beta1 ClusterTrustBundle is served
@@ -620,7 +643,7 @@ while building this guide and not reproduced since. Entries marked **[Dn]** exis
 product defect and go away when it is fixed.
 
 The fix commands are written to be run as they are, in your guide shell. On this release every
-command block below was run on 2026-11-05, on a verification cluster built by the guide
+command block below was run on 2026-11-09, on a verification cluster built by the guide
 (`auto-build/run.sh --attachment docs/attachments.md --only ...`), after Validate had passed there,
 and Validate passed again after the last of them. Most ran against a healthy cluster, so they show
 that the fix is safe to run and leaves the cluster working, not that it cures the symptom; the
@@ -978,12 +1001,12 @@ done
 kubectl-ate get workers
 ```
 
-On this release, after the kind node was stopped and started on 2026-11-05, the workers restarted in
-place, kept their registrations, and seven turns in new sessions completed without this block; the
-block itself runs cleanly and leaves three workers registered (Validate passed after it). On
-1.0.0-alpha11 a turn was refused as above until it ran. Restarting the node restarts Keycloak too, which
-re-imports the realm with `kagent-cli` disabled (A.1), so scripts get `401` until Step 24's
-`keycloak-enable-kagent-cli` block runs again.
+On this release, after the kind node was stopped and started on 2026-11-10, the workers restarted in
+place, kept their registrations, seven turns in new sessions completed without this block, and
+Validate passed. The block itself runs cleanly and leaves three workers registered (Validate passed
+after it). On 1.0.0-alpha11 a turn was refused as above until it ran. Restarting the node restarts
+Keycloak too, which re-imports the realm with `kagent-cli` disabled (A.1), so scripts get `401`
+until Step 24's `keycloak-enable-kagent-cli` block runs again.
 
 **C.24 A turn never ends after a team's budget runs out.** *Reproduced.* The enterprise gateway
 refuses the model call with `429` and `Retry-After` set to the time left in the budget's window, and
